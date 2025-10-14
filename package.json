@@ -16,6 +16,8 @@
     "test:woo": "tsx scripts/test-woocommerce.ts",
     "test:title": "tsx scripts/test-title.ts",
     "test:detection": "tsx scripts/test-detection.ts",
+    "test:pipeline": "tsx scripts/test-pipeline.ts",
+    "test:batch": "tsx scripts/test-batch.ts",
     "validate:env": "tsx scripts/validate-env.ts"
   },
   "keywords": [],
