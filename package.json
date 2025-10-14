@@ -11,7 +11,9 @@
     "type-check": "tsc --noEmit",
     "db:init": "tsx scripts/db-init.ts",
     "db:reset": "tsx scripts/db-reset.ts",
-    "test:setup": "tsx scripts/test-setup.ts"
+    "test:setup": "tsx scripts/test-setup.ts",
+    "test:apis": "tsx scripts/test-apis.ts",
+    "test:woo": "tsx scripts/test-woocommerce.ts"
   },
   "keywords": [],
   "author": "",
