@@ -16,7 +16,7 @@ export interface BrandDetection {
 }
 
 export interface DetectionRegion {
-  type: 'logo' | 'text';
+  type: 'logo' | 'text' | 'emblem';
   brand: string;
   confidence: number;
   polygon: Array<{ x: number; y: number }>;
