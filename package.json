@@ -13,7 +13,8 @@
     "db:reset": "tsx scripts/db-reset.ts",
     "test:setup": "tsx scripts/test-setup.ts",
     "test:apis": "tsx scripts/test-apis.ts",
-    "test:woo": "tsx scripts/test-woocommerce.ts"
+    "test:woo": "tsx scripts/test-woocommerce.ts",
+    "validate:env": "tsx scripts/validate-env.ts"
   },
   "keywords": [],
   "author": "",
@@ -34,6 +35,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "autoprefixer": "^10.4.21",
+    "dotenv": "^17.2.3",
     "eslint": "^9.37.0",
     "eslint-config-next": "^15.5.5",
     "postcss": "^8.5.6",

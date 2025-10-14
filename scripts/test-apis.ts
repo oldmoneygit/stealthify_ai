@@ -1,3 +1,4 @@
+import './load-env'; // Load environment variables first
 import { testConnection as testWooCommerce } from '../src/services/woocommerce.service';
 import { testConnection as testShopify } from '../src/services/shopify.service';
 import { testVertexAuth } from '../src/lib/vertex-auth';
@@ -59,7 +60,7 @@ async function testAllAPIs() {
   console.log('🤖 [4/4] Google Gemini API...');
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GOOGLE_GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GOOGLE_GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

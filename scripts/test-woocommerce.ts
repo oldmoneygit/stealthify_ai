@@ -1,3 +1,4 @@
+import './load-env'; // Load environment variables first
 import { syncProducts, getLocalProducts } from '../src/services/woocommerce.service';
 
 async function testWooCommerce() {

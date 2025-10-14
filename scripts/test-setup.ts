@@ -1,3 +1,4 @@
+import './load-env'; // Load environment variables first
 import { db, isDatabaseInitialized } from '../src/lib/db';
 
 console.log('🧪 Testando setup do projeto...\n');
