@@ -1,7 +1,34 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git clone:*)"
+      "Bash(git clone:*)",
+      "Bash(pnpm type-check)",
+      "Bash(npx tsc:*)",
+      "Bash(curl -fsSL https://get.pnpm.io/install.sh)",
+      "Bash(sh -)",
+      "Bash(source:*)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm install)",
+      "Bash(export PNPM_HOME=\"/Users/jefersonlima/Library/pnpm\")",
+      "Bash(export PATH=\"$PNPM_HOME:$PATH\")",
+      "Bash(chmod:*)",
+      "Bash(pnpm:*)",
+      "Bash(export NVM_DIR=\"$HOME/.nvm\")",
+      "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
+      "Bash(. \"$NVM_DIR/nvm.sh\")",
+      "Bash(npm --version)",
+      "Bash(node:*)",
+      "Read(//Users/jefersonlima/.nvm/versions/node/**)",
+      "Read(//Users/jefersonlima/Library/pnpm/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(export PNPM_HOME=\"$HOME/Library/pnpm\")",
+      "Bash(npm run build-release:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsx:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfix: update Tailwind CSS to v4.x with @tailwindcss/postcss\n\n- Install @tailwindcss/postcss package for Tailwind CSS 4.x compatibility\n- Update postcss.config.mjs to use @tailwindcss/postcss plugin\n- Migrate globals.css from @tailwind directives to @import \"tailwindcss\"\n- Fix PostCSS plugin configuration error in Next.js 15.5.5\n\nThis resolves the build error: \"tailwindcss directly as a PostCSS plugin\"\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(open:*)"
     ],
     "deny": [],
     "ask": []

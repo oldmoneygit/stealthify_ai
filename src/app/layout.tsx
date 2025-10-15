@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Brand Camouflage System",
-  description: "Sistema automatizado para camuflagem de marcas em produtos",
+  description: "Automated brand camouflage for WooCommerce → Shopify",
 };
 
 export default function RootLayout({
@@ -13,9 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className="antialiased">
-        {children}
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
