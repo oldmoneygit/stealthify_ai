@@ -227,21 +227,22 @@ export function createPreventiveBoxLidMasks(
     console.log('   📍 Assumindo box na região superior-central da imagem');
 
     // Região genérica: topo-central (onde boxes costumam aparecer)
-    // x: 20% - 80% (centro horizontal)
-    // y: 5% - 25% (topo da imagem)
+    // 🔥 MELHORADO: Área aumentada para cobrir logos na tampa da caixa
+    // x: 15% - 85% (mais amplo horizontalmente)
+    // y: 2% - 32% (mais amplo verticalmente - era 5-25%, agora 2-32%)
     const genericLidMask: Segment = {
-      brand: 'Generic Box Lid (Preventive)',
+      brand: 'Generic Box Lid (Preventive - ENHANCED)',
       confidence: 100,
       polygon: [
-        { x: 0.20, y: 0.05 },  // Top-left
-        { x: 0.80, y: 0.05 },  // Top-right
-        { x: 0.80, y: 0.25 },  // Bottom-right
-        { x: 0.20, y: 0.25 }   // Bottom-left
+        { x: 0.15, y: 0.02 },  // Top-left (era 0.20, 0.05 → agora 0.15, 0.02)
+        { x: 0.85, y: 0.02 },  // Top-right (era 0.80, 0.05 → agora 0.85, 0.02)
+        { x: 0.85, y: 0.32 },  // Bottom-right (era 0.80, 0.25 → agora 0.85, 0.32)
+        { x: 0.15, y: 0.32 }   // Bottom-left (era 0.20, 0.25 → agora 0.15, 0.32)
       ]
     };
 
     preventiveMasks.push(genericLidMask);
-    console.log('   ✅ Máscara genérica criada na região superior (20-80% x, 5-25% y)');
+    console.log('   ✅ Máscara genérica MELHORADA criada na região superior (15-85% x, 2-32% y)');
   }
 
   console.log(`   🎯 Total: ${preventiveMasks.length} máscara(s) preventiva(s) de tampa`);
