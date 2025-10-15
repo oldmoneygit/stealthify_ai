@@ -37,6 +37,12 @@ export async function analyzeSingleProduct(
     console.log(`   Original: ${product.name}`);
     console.log(`   Camuflado: ${camouflagedTitle}`);
 
+    // Convert image to base64 ONCE (cache for all phases)
+    console.log('\n🖼️ Convertendo imagem para base64 (usado em todas as fases)...');
+    const imageBase64 = await urlToBase64(product.image_url);
+    const dimensions = await getImageDimensions(imageBase64);
+    console.log(`   Dimensões: ${dimensions.width}x${dimensions.height}`);
+
     // FASE 2: Detect Brands
     console.log('\n🔍 [2/6] Detectando marcas na imagem...');
     const detection = await detectionService.detect(product.image_url);
@@ -69,10 +75,6 @@ export async function analyzeSingleProduct(
       detection.regions
     );
     console.log(`   Segmentos: ${segments.length}`);
-
-    // Convert image to base64 for inpainting
-    const imageBase64 = await urlToBase64(product.image_url);
-    const dimensions = await getImageDimensions(imageBase64);
 
     // Create mask from segments
     const maskBase64 = await createMask(

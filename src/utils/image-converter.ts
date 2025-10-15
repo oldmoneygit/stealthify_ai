@@ -8,19 +8,34 @@ import sharp from 'sharp';
  */
 export async function urlToBase64(url: string): Promise<string> {
   console.log('🖼️ Convertendo URL para base64...');
+  console.log('   URL:', url.substring(0, 100) + '...');
 
   try {
-    // Fetch image
-    const response = await fetch(url);
+    // Fetch image with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.status}`);
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
     }
 
+    console.log('   Baixando imagem...');
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    console.log('   Tamanho original:', (buffer.length / 1024 / 1024).toFixed(2), 'MB');
+
     // Resize if too large (max 5MB for API)
+    console.log('   Processando com Sharp...');
     const resized = await sharp(buffer)
       .resize(2048, 2048, {
         fit: 'inside',
@@ -29,17 +44,23 @@ export async function urlToBase64(url: string): Promise<string> {
       .jpeg({ quality: 90 })
       .toBuffer();
 
+    console.log('   Convertendo para base64...');
     const base64 = resized.toString('base64');
 
     console.log('✅ Conversão completa:', {
-      originalSize: buffer.length,
-      resizedSize: resized.length,
+      originalSize: (buffer.length / 1024).toFixed(2) + ' KB',
+      resizedSize: (resized.length / 1024).toFixed(2) + ' KB',
       base64Length: base64.length
     });
 
     return base64;
 
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('❌ Timeout ao baixar imagem (30s)');
+      throw new Error('Image download timeout after 30 seconds');
+    }
+
     console.error('❌ Erro na conversão:', error);
     throw new Error(
       `Failed to convert URL to base64: ${error instanceof Error ? error.message : 'Unknown error'}`
