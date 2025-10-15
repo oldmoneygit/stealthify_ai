@@ -4,7 +4,7 @@ import { getImageDimensions } from '@/utils/image-converter';
 import { createBlurMask, applyBlurWithMask } from '@/utils/mask-generator';
 import { retryWithBackoff } from '@/utils/retry';
 
-const VERTEX_PROJECT_ID = process.env.GOOGLE_VERTEX_PROJECT_ID!;
+const VERTEX_PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID!;
 const VERTEX_LOCATION = 'us-central1';
 const IMAGEN_MODEL = 'imagen-3.0-generate-001';
 
