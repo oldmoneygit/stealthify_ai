@@ -40,7 +40,7 @@ export async function POST(request: Request) {
         sku: product.sku,
         name: product.name
       },
-      result
+      analysis: result
     });
 
   } catch (error) {

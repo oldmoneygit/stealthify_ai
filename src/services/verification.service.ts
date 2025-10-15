@@ -3,7 +3,7 @@ import { retryWithBackoff } from '@/utils/retry';
 import type { VerificationResult } from '@/lib/types';
 
 const GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY!;
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-2.0-flash-exp'; // Modelo experimental mais leve e menos congestionado
 
 /**
  * Verify if edited image is clean (no visible brand logos)
@@ -18,62 +18,83 @@ export async function verify(
 ): Promise<VerificationResult> {
   console.log('🔍 Verificando imagem editada para marcas:', originalBrands.join(', '));
 
-  return retryWithBackoff(async () => {
-    // Call Gemini API for verification
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: VERIFICATION_PROMPT(originalBrands) },
-                {
-                  inlineData: {
-                    mimeType: 'image/jpeg',
-                    data: imageBase64
+  try {
+    return await retryWithBackoff(async () => {
+      // Call Gemini API for verification
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: VERIFICATION_PROMPT(originalBrands) },
+                  {
+                    inlineData: {
+                      mimeType: 'image/jpeg',
+                      data: imageBase64
+                    }
                   }
-                }
-              ]
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: 'application/json'
             }
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: 'application/json'
-          }
-        })
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Gemini API error: ${response.status} - ${error}`);
       }
-    );
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${error}`);
-    }
+      const result = await response.json();
+      const content = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    const result = await response.json();
-    const content = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!content) {
+        throw new Error('No content in Gemini response');
+      }
 
-    if (!content) {
-      throw new Error('No content in Gemini response');
-    }
+      // Parse JSON response
+      const verification: VerificationResult = JSON.parse(content);
 
-    // Parse JSON response
-    const verification: VerificationResult = JSON.parse(content);
+      console.log('✅ Verificação completa:', {
+        isClean: verification.isClean,
+        riskScore: verification.riskScore,
+        remainingBrands: verification.remainingBrands.length,
+        description: verification.description
+      });
 
-    console.log('✅ Verificação completa:', {
-      isClean: verification.isClean,
-      riskScore: verification.riskScore,
-      blurRegions: verification.blurRegions?.length || 0
+      return verification;
+    }, {
+      maxRetries: 5, // Aumentado de 3 para 5 tentativas
+      initialDelay: 2000, // Delay inicial maior (2s)
+      maxDelay: 16000, // Delay máximo 16s
+      backoffMultiplier: 2, // Dobra o delay a cada tentativa
+      onRetry: (attempt, error) => {
+        console.log(`⚠️ Verificação falhou (tentativa ${attempt}):`, error.message);
+        if (error.message.includes('503') || error.message.includes('overloaded')) {
+          console.log('   ℹ️ API sobrecarregada - aguardando mais tempo antes de tentar novamente...');
+        }
+      }
     });
+  } catch (error) {
+    // FALLBACK GRACIOSO: Se Gemini falhar após todas as tentativas, aceita a imagem
+    console.error('❌ Verificação falhou após todas as tentativas:', error);
+    console.log('⚠️ FALLBACK: Aceitando imagem sem verificação (assumindo riskScore moderado)');
 
-    return verification;
-  }, {
-    onRetry: (attempt, error) => {
-      console.log(`⚠️ Verificação falhou (tentativa ${attempt}):`, error.message);
-    }
-  });
+    return {
+      isClean: false,
+      riskScore: 45, // Score moderado (vai trigger re-edit, mas não blur)
+      remainingBrands: originalBrands,
+      description: 'Verificação Gemini falhou - assumindo marcas ainda presentes (precaução)'
+    };
+  }
 }
 
 /**

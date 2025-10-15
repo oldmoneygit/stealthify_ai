@@ -40,3 +40,51 @@ export function isDatabaseInitialized(): boolean {
 if (!isDatabaseInitialized()) {
   initializeDatabase();
 }
+
+/**
+ * Get all analyses with product info
+ */
+export function getAllAnalysesWithProducts() {
+  const stmt = db.prepare(`
+    SELECT
+      p.id as product_id,
+      p.sku,
+      p.name as original_name,
+      p.price,
+      p.image_url as original_image_url,
+      a.id as analysis_id,
+      a.camouflaged_title,
+      a.edited_image_base64,
+      a.brands_detected,
+      a.risk_score,
+      a.status,
+      a.analyzed_at
+    FROM products p
+    LEFT JOIN analyses a ON p.id = a.product_id
+    ORDER BY p.id DESC
+  `);
+
+  return stmt.all();
+}
+
+/**
+ * Get latest analysis for a specific product
+ */
+export function getLatestAnalysisForProduct(productId: number) {
+  const stmt = db.prepare(`
+    SELECT
+      a.id,
+      a.camouflaged_title,
+      a.edited_image_base64,
+      a.brands_detected,
+      a.risk_score,
+      a.status,
+      a.analyzed_at
+    FROM analyses a
+    WHERE a.product_id = ?
+    ORDER BY a.analyzed_at DESC
+    LIMIT 1
+  `);
+
+  return stmt.get(productId);
+}

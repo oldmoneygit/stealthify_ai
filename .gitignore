@@ -42,6 +42,11 @@ database/*.db
 database/*.db-shm
 database/*.db-wal
 
+# Output files (edited images, exports)
+/output/
+*.csv
+*.json
+
 # IDE
 .vscode/
 .idea/

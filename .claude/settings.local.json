@@ -28,7 +28,18 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfix: update Tailwind CSS to v4.x with @tailwindcss/postcss\n\n- Install @tailwindcss/postcss package for Tailwind CSS 4.x compatibility\n- Update postcss.config.mjs to use @tailwindcss/postcss plugin\n- Migrate globals.css from @tailwind directives to @import \"tailwindcss\"\n- Fix PostCSS plugin configuration error in Next.js 15.5.5\n\nThis resolves the build error: \"tailwindcss directly as a PostCSS plugin\"\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git push:*)",
-      "Bash(open:*)"
+      "Bash(open:*)",
+      "Read(//c/Users/PC/.cursor/**)",
+      "Bash(powershell:*)",
+      "Bash(dir:*)",
+      "Read(//c/Users/PC/.config/**)",
+      "Read(//c/Users/PC/Desktop/Ecossistema_Atendimento_SNKHOUSE/**)",
+      "Bash(claude --version)",
+      "Bash(claude mcp:*)",
+      "Bash(npx -y @modelcontextprotocol/server-filesystem:*)",
+      "Bash(curl:*)",
+      "Bash(sqlite3:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

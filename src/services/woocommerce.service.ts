@@ -12,30 +12,57 @@ const wooApi = new WooCommerceRestApi({
 });
 
 /**
- * Fetch all products from WooCommerce and save to database
- * @returns Array of products
+ * Fetch ALL products from WooCommerce with pagination and save to database
+ * @returns Array of all products
  */
 export async function syncProducts(): Promise<Product[]> {
-  console.log('🔄 Sincronizando produtos do WooCommerce...');
+  console.log('🔄 Sincronizando TODOS os produtos do WooCommerce...');
 
   try {
-    const response = await wooApi.get("products", {
-      per_page: 100,
-      status: "publish"
-    });
+    const allProducts: Product[] = [];
+    let page = 1;
+    let hasMore = true;
+    const perPage = 100; // Max per page
 
-    const products: Product[] = response.data
-      .filter((p: any) => p.images && p.images.length > 0) // Apenas produtos com imagem
-      .map((p: any) => ({
-        id: 0, // Will be set by database
-        woo_product_id: p.id,
-        sku: p.sku || `product-${p.id}`,
-        name: p.name,
-        price: parseFloat(p.price) || 0,
-        image_url: p.images[0]?.src || ''
-      }));
+    while (hasMore) {
+      console.log(`   📄 Buscando página ${page}...`);
 
-    // Save to database
+      const response = await wooApi.get("products", {
+        per_page: perPage,
+        page: page,
+        status: "publish"
+      });
+
+      const pageProducts: Product[] = response.data
+        .filter((p: any) => p.images && p.images.length > 0) // Apenas produtos com imagem
+        .map((p: any) => ({
+          id: 0, // Will be set by database
+          woo_product_id: p.id,
+          sku: p.sku || `product-${p.id}`,
+          name: p.name,
+          price: parseFloat(p.price) || 0,
+          image_url: p.images[0]?.src || ''
+        }));
+
+      allProducts.push(...pageProducts);
+
+      console.log(`   ✅ Página ${page}: ${pageProducts.length} produtos`);
+
+      // Check if there are more pages
+      if (pageProducts.length < perPage) {
+        hasMore = false;
+      } else {
+        page++;
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    console.log(`\n📊 Total encontrado: ${allProducts.length} produtos`);
+
+    // Save all products to database
+    console.log('💾 Salvando no banco de dados...');
+
     const stmt = db.prepare(`
       INSERT INTO products (woo_product_id, sku, name, price, image_url)
       VALUES (?, ?, ?, ?, ?)
@@ -46,7 +73,7 @@ export async function syncProducts(): Promise<Product[]> {
         synced_at = CURRENT_TIMESTAMP
     `);
 
-    for (const product of products) {
+    for (const product of allProducts) {
       stmt.run(
         product.woo_product_id,
         product.sku,
@@ -56,8 +83,8 @@ export async function syncProducts(): Promise<Product[]> {
       );
     }
 
-    console.log(`✅ ${products.length} produtos sincronizados`);
-    return products;
+    console.log(`✅ ${allProducts.length} produtos sincronizados com sucesso!\n`);
+    return allProducts;
 
   } catch (error) {
     console.error('❌ Erro ao sincronizar produtos:', error);

@@ -26,54 +26,71 @@ export async function detect(imageUrl: string): Promise<BrandDetection> {
     // Convert image to base64
     const imageBase64 = await urlToBase64(imageUrl);
 
-    // Call Gemini API
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: DETECTION_PROMPT },
-              {
-                inlineData: {
-                  mimeType: 'image/jpeg',
-                  data: imageBase64
+    // Call Gemini API with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s timeout
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: DETECTION_PROMPT },
+                {
+                  inlineData: {
+                    mimeType: 'image/jpeg',
+                    data: imageBase64
+                  }
                 }
-              }
-            ]
-          }],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json'
-          }
-        })
+              ]
+            }],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: 'application/json'
+            }
+          })
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Gemini API error: ${response.status} - ${error}`);
       }
-    );
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${error}`);
+      const result = await response.json();
+      const content = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!content) {
+        throw new Error('No content in Gemini response');
+      }
+
+      // Parse JSON response
+      const detection: BrandDetection = JSON.parse(content);
+
+      console.log('✅ Detecção completa:', {
+        brands: detection.brands,
+        riskScore: detection.riskScore,
+        regionsCount: detection.regions.length
+      });
+
+      return detection;
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Gemini API timeout após 45 segundos');
+      }
+
+      throw error;
     }
-
-    const result = await response.json();
-    const content = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!content) {
-      throw new Error('No content in Gemini response');
-    }
-
-    // Parse JSON response
-    const detection: BrandDetection = JSON.parse(content);
-
-    console.log('✅ Detecção completa:', {
-      brands: detection.brands,
-      riskScore: detection.riskScore,
-      regionsCount: detection.regions.length
-    });
-
-    return detection;
 
   }, {
     onRetry: (attempt, error) => {

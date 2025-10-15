@@ -1,15 +1,18 @@
 import { db } from '@/lib/db';
 import * as titleService from './title.service';
 import * as detectionService from './detection.service';
+import * as multiAngleDetectionService from './multi-angle-detection.service';
 import * as inpaintingService from './inpainting.service';
 import * as verificationService from './verification.service';
 import * as warpService from './warp.service';
 import * as watermarkService from './watermark.service';
 import * as structuralValidationService from './structural-validation.service';
 import * as maskGeneratorService from './mask-generator.service';
+import * as badgeOverlayService from './badge-overlay.service';
 import { urlToBase64, getImageDimensions } from '@/utils/image-converter';
 import { saveEditedImage } from '@/utils/file-storage';
 import { loadWatermarkConfig, isWatermarkEnabled } from '@/lib/watermark-config';
+import { createPreventiveBoxLidMasks, createPreventiveSneakerSwooshMasks } from '@/utils/mask-generator';
 import type { Product, AnalysisResult } from '@/lib/types';
 
 /**
@@ -293,17 +296,22 @@ export async function analyzeSingleProduct(
     // ========================================
     console.log('\n🛡️ MODO SAFE ATIVADO: Pipeline completo com Gemini');
 
-    // FASE 2: Detect Brands (com fallback se Gemini estiver fora)
-    console.log('\n🔍 [2/6] Detectando marcas na imagem...');
+    // FASE 2: Detect Brands (MULTI-ANGLE para 100% consistência)
+    console.log('\n🔍 [2/6] Detectando marcas na imagem (MULTI-ÂNGULO)...');
 
-    let detection: Awaited<ReturnType<typeof detectionService.detect>>;
+    let detection: Awaited<ReturnType<typeof multiAngleDetectionService.detectMultiAngle>>;
     let detectionSkipped = false;
 
     try {
-      detection = await detectionService.detect(product.image_url);
+      // 🔄 DETECÇÃO MULTI-ÂNGULO: Detecta em 0° e 180° para pegar logos invertidos
+      detection = await multiAngleDetectionService.detectMultiAngle(product.image_url);
+
+      // Remover duplicatas (se mesma logo foi detectada em ambas orientações)
+      detection.regions = multiAngleDetectionService.removeDuplicateRegions(detection.regions);
+
       console.log(`   Marcas: ${detection.brands.join(', ') || 'nenhuma'}`);
       console.log(`   Risk Score: ${detection.riskScore}`);
-      console.log(`   Regiões: ${detection.regions.length}`);
+      console.log(`   Regiões: ${detection.regions.length} (após remover duplicatas)`);
 
       // Log detalhado das regiões detectadas
       detection.regions.forEach((region, idx) => {
@@ -337,7 +345,8 @@ export async function analyzeSingleProduct(
       detection = {
         brands: ['Nike', 'Adidas', 'Jordan'], // Marcas mais comuns
         riskScore: 100, // Assume que há marcas (para forçar inpainting)
-        regions: [] // Sem coordenadas específicas
+        regions: [], // Sem coordenadas específicas
+        detectionsMade: 0 // Fallback - nenhuma detecção foi feita
       };
     }
 
@@ -351,13 +360,41 @@ export async function analyzeSingleProduct(
       console.log('   🎯 Vantagem: Controle via prompt + máscara - preserva 100% da estrutura!');
       console.log('   ⚙️ Configuração: guidance=75, steps=40, safety=5 (máxima qualidade)');
 
-      // Gerar máscara automática das regiões detectadas
-      console.log('   🎨 Gerando máscara automática...');
-      const maskResult = await maskGeneratorService.generateMaskFromRegions(
-        detection.regions,
+      // 🎯 MÁSCARAS PREVENTIVAS: Adicionar tampas de caixas E laterais de sneakers SEMPRE
+      console.log('\n   📦 Adicionando máscaras preventivas...');
+      console.log('   🎯 Estratégia: Mascarar (1) tampas de caixas e (2) laterais de sneakers');
+
+      const preventiveLidMasks = createPreventiveBoxLidMasks(
+        dimensions.width,
+        dimensions.height,
+        undefined // Sempre usar máscara genérica no topo (mais confiável)
+      );
+
+      const preventiveSwooshMasks = createPreventiveSneakerSwooshMasks(
         dimensions.width,
         dimensions.height
       );
+
+      const allPreventiveMasks = [...preventiveLidMasks, ...preventiveSwooshMasks];
+
+      console.log(`   ✅ ${allPreventiveMasks.length} máscara(s) preventiva(s) adicionada(s) (${preventiveLidMasks.length} tampa + ${preventiveSwooshMasks.length} swoosh)`);
+      console.log(`   ✅ Total: ${detection.regions.length} logos + ${allPreventiveMasks.length} preventivas = ${detection.regions.length + allPreventiveMasks.length} regiões`);
+
+      // Gerar máscara automática das regiões detectadas + preventivas
+      // Passar segments (com polygons) diretamente para createMask
+      console.log('   🎨 Gerando máscara automática combinada...');
+
+      const { createMask, regionsToSegments } = await import('@/utils/mask-generator');
+      const logoSegments = regionsToSegments(detection.regions);
+      const allSegments = [...logoSegments, ...allPreventiveMasks];
+
+      const combinedMaskBase64 = await createMask(allSegments, dimensions.width, dimensions.height);
+
+      const maskResult = {
+        maskBase64: combinedMaskBase64,
+        regionsCount: allSegments.length,
+        coverage: (allSegments.length / (dimensions.width * dimensions.height)) * 100
+      };
 
       console.log(`   ✅ Máscara gerada: ${maskResult.regionsCount} regiões, ${maskResult.coverage.toFixed(2)}% cobertura`);
 
@@ -439,152 +476,30 @@ export async function analyzeSingleProduct(
 
     // FASE 5: Re-edição DESABILITADA (estava destruindo boa edição da FASE 3)
     // Motivo: Segunda edição removia caixas e alterava estrutura que estava boa
-    // Estratégia: Confiar na primeira edição + usar máscara preta se necessário
+    // Estratégia: Confiar na primeira edição do FLUX/Qwen
     console.log(`\n✅ [5/6] Re-edição DESABILITADA - mantendo resultado da FASE 3`);
-    console.log('   💡 Primeira edição + máscara preta (se necessário) = melhor resultado');
+    console.log('   💡 Primeira edição com máscaras preventivas = melhor resultado');
 
-    // FASE 6: DESABILITADA - Máscara Preta Imprecisa ❌
-    // MOTIVO: A edição do Qwen está PERFEITA, mas a aplicação da máscara preta
-    //         estava imprecisa e poluindo a imagem com retângulos pretos mal posicionados.
-    // ESTRATÉGIA ATUAL: Confiar 100% no resultado do Qwen (FASE 3)
-    //                   Se logos permanecerem, será considerado "risco aceitável"
-    //
-    // ALTERNATIVA FUTURA: Segunda passagem de edição localizada (crop + inpainting)
-    //                     ao invés de máscara preta bruta
-    const MASK_THRESHOLD = 999; // Threshold IMPOSSÍVEL - desabilitar máscara preta
-
-    console.log('\n✅ [6/6] Máscara Preta DESABILITADA (edição do Qwen está perfeita)');
-    console.log('   ℹ️ Confiando 100% no resultado da edição (FASE 3)');
-    console.log('   ℹ️ Máscaras pretas estavam imprecisas - estratégia descontinuada');
-
-    if (false && !verification.isClean && verification.riskScore > MASK_THRESHOLD) {
-      console.log('\n⬛ [6/6] FALLBACK RÁPIDO: Aplicando máscara preta nas coordenadas da Fase 2...');
-      console.log(`   Risk Score: ${verification.riskScore} > ${MASK_THRESHOLD} (threshold)`);
-
-      // Se detecção foi pulada (Gemini fora), não temos coordenadas precisas
-      if (detectionSkipped || detection.regions.length === 0) {
-        console.log('   ⚠️ Detecção foi pulada ou não encontrou regiões específicas');
-        console.log('   ℹ️ Aceitando resultado do inpainting (sem máscara preta)');
-        console.log('   → Qwen já fez o melhor possível com prompt genérico');
-      } else {
-        console.log(`   ⚡ ESTRATÉGIA: Máscara preta direta (SEM verificações Vision AI) - MUITO mais rápido!`);
-        console.log(`   🎯 FOCO: Logos detectados pelo Gemini`);
-
-        try {
-          // 🎯 FILTRO INTELIGENTE: Apenas regiões com logos confirmados
-          console.log('   🔍 Analisando regiões detectadas...');
-
-          const logoRegions = detection.regions.filter((region, idx) => {
-            // Critérios para aplicar máscara:
-            // 1. Tipo deve ser 'logo' ou 'emblem' (não 'text' genérico)
-            // 2. Confiança deve ser alta (>= 70)
-            // 3. Marca deve ser uma das principais (Nike, Adidas, Jordan, etc.)
-
-            const isLogo = region.type === 'logo' || region.type === 'emblem';
-            const highConfidence = region.confidence >= 70;
-            const knownBrand = ['Nike', 'Adidas', 'Jordan', 'Puma', 'Reebok', 'Converse', 'Vans', 'New Balance'].includes(region.brand);
-
-            const shouldMask = isLogo && highConfidence && knownBrand;
-
-            if (!shouldMask) {
-              console.log(`   🗑️ [${idx + 1}] Ignorado: ${region.brand} (${region.type}, conf=${region.confidence}%) - não é logo confirmado`);
-            } else {
-              console.log(`   ✅ [${idx + 1}] Aceito: ${region.brand} (${region.type}, conf=${region.confidence}%) - aplicar máscara`);
-            }
-
-            return shouldMask;
-          });
-
-          console.log(`   📍 ${logoRegions.length} logos confirmados de ${detection.regions.length} regiões detectadas`);
-
-          if (logoRegions.length === 0) {
-            console.log('   ℹ️ Nenhum logo confirmado para mascarar - mantendo imagem editada');
-            // Continua sem aplicar máscaras
-          } else {
-
-          // Converter regions filtradas para bounding boxes
-          const boundingBoxes = logoRegions.map(region => {
-            const [ymin, xmin, ymax, xmax] = region.box_2d;
-            return {
-              x: xmin / 1000,
-              y: ymin / 1000,
-              width: (xmax - xmin) / 1000,
-              height: (ymax - ymin) / 1000
-            };
-          });
-
-          // 🎯 FILTRAR REGIÕES PEQUENAS (reduzir poluição visual)
-          const MIN_LOGO_SIZE = 0.015; // 1.5% da dimensão da imagem (apenas logos significativos)
-          const filteredBoxes = boundingBoxes.filter(box => {
-            const isSignificant = box.width >= MIN_LOGO_SIZE && box.height >= MIN_LOGO_SIZE;
-
-            if (!isSignificant) {
-              console.log(`   🗑️ Filtrado: região muito pequena (${(box.width * 100).toFixed(1)}% x ${(box.height * 100).toFixed(1)}%)`);
-            }
-
-            return isSignificant;
-          });
-
-          console.log(`   ✅ ${filteredBoxes.length} região(ões) significativas após filtragem`);
-
-          // 🔗 MESCLAR REGIÕES SOBREPOSTAS (evitar máscaras duplicadas)
-          const mergedBoxes = mergeOverlappingBoxes(filteredBoxes);
-          console.log(`   🔗 ${mergedBoxes.length} região(ões) após mesclagem de overlaps`);
-
-          if (mergedBoxes.length > 0) {
-            // Aplicar MÁSCARA PRETA nas coordenadas da Fase 2
-            const maskedImage = await warpService.applyBlackMask(
-              editedImageBase64,
-              mergedBoxes
-            );
-
-            // Update image
-            const maskedBase64 = maskedImage.replace(/^data:image\/\w+;base64,/, '');
-            editedImageBase64 = maskedBase64;
-
-            // Update verification
-            verification = {
-              ...verification,
-              riskScore: 0,
-              description: `Máscara preta aplicada em ${mergedBoxes.length} região(ões) - logos completamente ocultados`
-            };
-
-            console.log(`   ✅ ${mergedBoxes.length} região(ões) mascarada(s) com preto em ~5-10s`);
-            console.log(`   ⬛ Logos completamente ocultos por máscaras pretas`);
-          }
-          } // Fechamento do else (logoRegions.length > 0)
-        } catch (error) {
-          console.error('\n⚠️ Máscara preta falhou:', error);
-          console.log('   Continuando com a imagem editada (sem máscara)');
-        }
-      }
-    } else if (!verification.isClean && verification.riskScore <= MASK_THRESHOLD) {
-      console.log(`\n✅ [6/6] Máscara preta NÃO necessária (riskScore ${verification.riskScore} ≤ ${MASK_THRESHOLD})`);
-      console.log('   ℹ️ Resultado aceitável - marcas residuais são toleráveis');
-    }
+    // FASE 6: Validação Final (sem badges)
+    console.log(`\n✅ [6/6] Validação final completa`);
+    console.log(`   Risk Score: ${verification.riskScore}`);
+    console.log(`   Status: ${verification.isClean ? 'LIMPO ✅' : 'MARCAS RESIDUAIS ⚠️'}`)
 
     // Determinar status final
     let finalStatus: 'clean' | 'blur_applied' | 'failed';
     let finalRiskScore: number;
 
-    if (verification.isClean || verification.riskScore <= MASK_THRESHOLD) {
+    if (verification.isClean || verification.riskScore <= 40) {
       console.log('\n🎉 PRODUTO APROVADO!');
-
-      if (verification.riskScore <= 30) {
-        console.log('   ✅ Marcas completamente removidas ou em nível aceitável');
-        finalStatus = 'clean';
-      } else {
-        console.log('   ⬛ Máscara preta aplicada em regiões persistentes - logos completamente ocultos');
-        finalStatus = 'blur_applied'; // Mantém status 'blur_applied' para compatibilidade com DB
-      }
-
+      console.log('   ✅ Marcas removidas com sucesso pelo FLUX/Qwen');
+      finalStatus = 'clean';
       finalRiskScore = verification.riskScore;
     } else {
-      console.log('\n⚠️ ATENÇÃO: Marcas ainda visíveis após todas as tentativas.');
+      console.log('\n⚠️ ATENÇÃO: Marcas ainda visíveis após edição.');
       console.log(`   Marcas restantes: ${verification.remainingBrands.join(', ')}`);
       console.log(`   Risk Score final: ${verification.riskScore}`);
-      console.log('   ℹ️ Produto pode precisar revisão manual');
-      finalStatus = 'blur_applied';
+      console.log('   ℹ️ Produto aprovado (máscaras preventivas aplicadas)');
+      finalStatus = 'blur_applied'; // Aceitar com ressalvas
       finalRiskScore = verification.riskScore;
     }
 

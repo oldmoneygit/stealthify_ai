@@ -8,6 +8,7 @@ import type { Product, AnalysisResult } from '@/lib/types';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [editedSkus, setEditedSkus] = useState<Set<string>>(new Set());
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -18,6 +19,7 @@ export default function ProductsPage() {
   // Load products on mount
   useEffect(() => {
     fetchProducts();
+    fetchEditedProducts();
   }, []);
 
   async function fetchProducts() {
@@ -29,6 +31,22 @@ export default function ProductsPage() {
       console.error('Failed to fetch products:', error);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function fetchEditedProducts() {
+    try {
+      const response = await fetch('/api/products/edited');
+      const data = await response.json();
+
+      if (data.success && Array.isArray(data.products)) {
+        const skus = new Set<string>(
+          data.products.map((p: { sku: string }) => p.sku)
+        );
+        setEditedSkus(skus);
+      }
+    } catch (error) {
+      console.error('Failed to fetch edited products:', error);
     }
   }
 
@@ -70,6 +88,8 @@ export default function ProductsPage() {
       if (data.success) {
         setAnalysis(data.result);
         setCurrentPhase(6);
+        // Reload edited products list
+        fetchEditedProducts();
       } else {
         throw new Error(data.message || 'Analysis failed');
       }
@@ -134,60 +154,63 @@ export default function ProductsPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             🎨 Brand Camouflage System
           </h1>
-          <p className="text-gray-600">
-            {products.length} produtos sincronizados do WooCommerce
-          </p>
+          <div className="flex items-center gap-6 text-sm">
+            <p className="text-gray-600">
+              📦 {products.length} produtos sincronizados
+            </p>
+            <p className="text-green-600 font-medium">
+              ✅ {editedSkus.size} editados
+            </p>
+            <p className="text-gray-500">
+              ⏳ {products.length - editedSkus.size} pendentes
+            </p>
+          </div>
         </div>
 
-        {/* Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Products Grid */}
-          <div className="lg:col-span-2">
-            {products.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Nenhum produto encontrado.
-                </p>
-                <p className="text-sm text-gray-500">
-                  Execute: <code className="bg-gray-100 px-2 py-1 rounded">pnpm test:woo</code>
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {products.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    onAnalyze={handleAnalyze}
-                    isAnalyzing={isAnalyzing && selectedProduct?.id === product.id}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Analysis Panel */}
-          <div className="space-y-6">
+        {/* Analysis Panel - Full Width when Active */}
+        {(isAnalyzing || (selectedProduct && analysis)) && (
+          <div className="mb-6">
             {isAnalyzing && currentPhase > 0 && (
               <AnalysisProgress currentPhase={currentPhase} />
             )}
 
             {selectedProduct && analysis && !isAnalyzing && (
-              <BeforeAfter
-                product={selectedProduct}
-                analysis={analysis}
-                onImport={handleImport}
-                isImporting={isImporting}
-              />
-            )}
-
-            {!selectedProduct && !isAnalyzing && (
-              <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                <p className="text-4xl mb-4">🎯</p>
-                <p>Selecione um produto para analisar</p>
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <BeforeAfter
+                  product={selectedProduct}
+                  analysis={analysis}
+                  onImport={handleImport}
+                  isImporting={isImporting}
+                />
               </div>
             )}
           </div>
+        )}
+
+        {/* Products Grid - Full Width */}
+        <div>
+          {products.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-8 text-center">
+              <p className="text-gray-600 mb-4">
+                Nenhum produto encontrado.
+              </p>
+              <p className="text-sm text-gray-500">
+                Execute: <code className="bg-gray-100 px-2 py-1 rounded">pnpm test:woo</code>
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAnalyze={handleAnalyze}
+                  isAnalyzing={isAnalyzing && selectedProduct?.id === product.id}
+                  isEdited={editedSkus.has(product.sku)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

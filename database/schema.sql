@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS analyses (
   -- Image
   original_image_url TEXT NOT NULL,
   edited_image_base64 TEXT NOT NULL,
+  edited_image_filepath TEXT, -- Local file path
 
   -- Metadata
   brands_detected TEXT NOT NULL,

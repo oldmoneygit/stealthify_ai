@@ -19,7 +19,8 @@ export interface DetectionRegion {
   type: 'logo' | 'text' | 'emblem';
   brand: string;
   confidence: number;
-  polygon: Array<{ x: number; y: number }>;
+  box_2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] normalized 0-1000
+  polygon?: Array<{ x: number; y: number }>; // Optional: precise polygon for complex shapes
 }
 
 // Segmentation result
@@ -37,17 +38,20 @@ export interface AnalysisResult {
   risk_score: number;
   status: 'clean' | 'blur_applied' | 'failed';
   error?: string;
+  mask?: string; // Máscara gerada (para debug/visualização) - base64 data URI
 }
 
-// Verification result
+// Verification result (ultra-strict verification)
 export interface VerificationResult {
   isClean: boolean;
   riskScore: number;
-  blurRegions?: Array<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+  remainingBrands: string[];
+  description: string;
+  regions?: Array<{
+    brand: string;
+    box_2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
+    confidence: number;
+    type: 'logo' | 'text' | 'emblem';
   }>;
 }
 

@@ -10,6 +10,7 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "db:init": "tsx scripts/db-init.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts",
     "db:reset": "tsx scripts/db-reset.ts",
     "test:setup": "tsx scripts/test-setup.ts",
     "test:apis": "tsx scripts/test-apis.ts",
@@ -18,7 +19,14 @@
     "test:detection": "tsx scripts/test-detection.ts",
     "test:pipeline": "tsx scripts/test-pipeline.ts",
     "test:batch": "tsx scripts/test-batch.ts",
-    "validate:env": "tsx scripts/validate-env.ts"
+    "test:watermark": "tsx scripts/test-watermark.ts",
+    "validate:env": "tsx scripts/validate-env.ts",
+    "storage": "tsx scripts/view-storage.ts",
+    "storage:stats": "tsx scripts/view-storage.ts stats",
+    "storage:clean": "tsx scripts/view-storage.ts clean",
+    "storage:export-json": "tsx scripts/view-storage.ts export-json",
+    "storage:export-csv": "tsx scripts/view-storage.ts export-csv",
+    "cleanup:duplicates": "tsx scripts/cleanup-duplicate-analyses.ts"
   },
   "keywords": [],
   "author": "",

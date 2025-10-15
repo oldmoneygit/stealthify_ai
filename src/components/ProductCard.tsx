@@ -9,13 +9,15 @@ interface ProductCardProps {
   onAnalyze?: (productId: number) => void;
   isAnalyzing?: boolean;
   analysisStatus?: 'clean' | 'blur_applied' | 'failed' | null;
+  isEdited?: boolean;
 }
 
 export function ProductCard({
   product,
   onAnalyze,
   isAnalyzing = false,
-  analysisStatus = null
+  analysisStatus = null,
+  isEdited = false
 }: ProductCardProps) {
   const [imageError, setImageError] = useState(false);
 
@@ -32,7 +34,7 @@ export function ProductCard({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-4">
+    <div className={`bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-4 ${isEdited ? 'ring-2 ring-green-500' : ''}`}>
       {/* Image */}
       <div className="relative aspect-square mb-3 bg-gray-100 rounded-md overflow-hidden">
         {!imageError ? (
@@ -46,6 +48,14 @@ export function ProductCard({
         ) : (
           <div className="flex items-center justify-center h-full text-gray-400">
             🖼️ Imagem indisponível
+          </div>
+        )}
+
+        {/* Edited Badge */}
+        {isEdited && (
+          <div className="absolute top-2 left-2 px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white shadow-lg flex items-center gap-1">
+            <span>✅</span>
+            <span>EDITADO</span>
           </div>
         )}
 

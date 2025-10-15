@@ -27,7 +27,10 @@ async function testDetection() {
       console.log(`    Marca: ${region.brand}`);
       console.log(`    Tipo: ${region.type}`);
       console.log(`    Confiança: ${region.confidence}%`);
-      console.log(`    Pontos do polígono: ${region.polygon.length}`);
+      console.log(`    Bounding Box: [${region.box_2d.join(', ')}]`);
+      if (region.polygon) {
+        console.log(`    Pontos do polígono: ${region.polygon.length}`);
+      }
     });
 
     // Step 2: Segmentation
