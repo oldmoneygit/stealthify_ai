@@ -267,74 +267,178 @@ export function createPreventiveSneakerSwooshMasks(
   imageWidth: number,
   imageHeight: number
 ): Segment[] {
-  console.log('👟 Criando máscaras preventivas para swoosh nas laterais dos sneakers...');
+  console.log('👟 Criando máscaras preventivas EXPANDIDAS para swoosh nas laterais dos sneakers...');
 
   const preventiveMasks: Segment[] = [];
 
-  // ESTRATÉGIA: Cobrir 4 áreas onde o swoosh Nike tipicamente aparece:
-  // 1. Lateral ESQUERDA superior (tênis à esquerda)
-  // 2. Lateral ESQUERDA inferior (tênis à esquerda)
-  // 3. Lateral DIREITA superior (tênis à direita)
-  // 4. Lateral DIREITA inferior (tênis à direita)
+  // 🔥 ESTRATÉGIA EXPANDIDA: Cobrir 8 áreas (antes eram 4) com máscaras MAIORES
+  // Problema anterior: Máscaras pequenas (15%x12%) não cobriam posições reais do swoosh
+  // Solução: Aumentar tamanho (30%x20%) e adicionar mais posições (incluindo centro)
+  //
+  // 1-4. Lateral ESQUERDA (4 posições: extrema, esquerda, centro-esquerda, meio)
+  // 5-8. Lateral DIREITA (4 posições: meio, centro-direita, direita, extrema)
 
-  // Dimensões típicas de um sneaker em fotos de produto:
-  // - Altura do swoosh: ~10-15% da altura da imagem
-  // - Posição vertical: 40-55% (meio do tênis)
-  // - Posição horizontal: 15-35% (esquerda) ou 65-85% (direita)
+  // 🎯 DIMENSÕES OTIMIZADAS (V2.5 - FINAL):
+  // V3 falhou: máscaras grandes demais (35x25%) causaram artefatos
+  // V2 funcionou: Risk Score 45 com máscaras 30x20%
+  // V2.5: Manter tamanho V2, ajustar APENAS posições para cobrir gaps
+  const swooshHeight = 0.22; // OTIMIZADO: 22% (equilíbrio perfeito)
+  const swooshWidth = 0.32;  // OTIMIZADO: 32% (cobertura sem exagero)
 
-  const swooshHeight = 0.12; // 12% da altura da imagem
-  const swooshWidth = 0.15;  // 15% da largura da imagem
+  // === GRID DE MÁSCARAS COM SOBREPOSIÇÃO ESTRATÉGICA (12 máscaras) ===
+  // Baseado em análise visual: swoosh frontal está em ~40-50% x, ~60-70% y
 
-  // 1. LATERAL ESQUERDA - SUPERIOR (tênis à esquerda, swoosh alto)
+  // LINHA 1: Topo (y: 30-52%)
+  // 1. Esquerda-Topo (x: 10-42%, y: 30-52%)
   preventiveMasks.push({
-    brand: 'Sneaker Swoosh Left-Top (Preventive)',
+    brand: 'Swoosh Grid L1-C1 (V2.5)',
     confidence: 100,
     polygon: [
-      { x: 0.15, y: 0.35 },  // Top-left
-      { x: 0.15 + swooshWidth, y: 0.35 },  // Top-right
-      { x: 0.15 + swooshWidth, y: 0.35 + swooshHeight },  // Bottom-right
-      { x: 0.15, y: 0.35 + swooshHeight }   // Bottom-left
+      { x: 0.10, y: 0.30 },
+      { x: 0.10 + swooshWidth, y: 0.30 },
+      { x: 0.10 + swooshWidth, y: 0.30 + swooshHeight },
+      { x: 0.10, y: 0.30 + swooshHeight }
     ]
   });
 
-  // 2. LATERAL ESQUERDA - INFERIOR (tênis à esquerda, swoosh baixo)
+  // 2. Centro-Topo (x: 34-66%, y: 30-52%) - COBRE SWOOSH FRONTAL TOPO
   preventiveMasks.push({
-    brand: 'Sneaker Swoosh Left-Bottom (Preventive)',
+    brand: 'Swoosh Grid L1-C2 (V2.5)',
     confidence: 100,
     polygon: [
-      { x: 0.15, y: 0.50 },  // Top-left
-      { x: 0.15 + swooshWidth, y: 0.50 },  // Top-right
-      { x: 0.15 + swooshWidth, y: 0.50 + swooshHeight },  // Bottom-right
-      { x: 0.15, y: 0.50 + swooshHeight }   // Bottom-left
+      { x: 0.34, y: 0.30 },
+      { x: 0.34 + swooshWidth, y: 0.30 },
+      { x: 0.34 + swooshWidth, y: 0.30 + swooshHeight },
+      { x: 0.34, y: 0.30 + swooshHeight }
     ]
   });
 
-  // 3. LATERAL DIREITA - SUPERIOR (tênis à direita, swoosh alto)
+  // 3. Direita-Topo (x: 58-90%, y: 30-52%)
   preventiveMasks.push({
-    brand: 'Sneaker Swoosh Right-Top (Preventive)',
+    brand: 'Swoosh Grid L1-C3 (V2.5)',
     confidence: 100,
     polygon: [
-      { x: 0.70, y: 0.35 },  // Top-left
-      { x: 0.70 + swooshWidth, y: 0.35 },  // Top-right
-      { x: 0.70 + swooshWidth, y: 0.35 + swooshHeight },  // Bottom-right
-      { x: 0.70, y: 0.35 + swooshHeight }   // Bottom-left
+      { x: 0.58, y: 0.30 },
+      { x: 0.58 + swooshWidth, y: 0.30 },
+      { x: 0.58 + swooshWidth, y: 0.30 + swooshHeight },
+      { x: 0.58, y: 0.30 + swooshHeight }
     ]
   });
 
-  // 4. LATERAL DIREITA - INFERIOR (tênis à direita, swoosh baixo)
+  // LINHA 2: Meio-Alto (y: 42-64%) - SOBREPOSIÇÃO COM LINHA 1
+  // 4. Esquerda-MeioAlto (x: 10-42%, y: 42-64%)
   preventiveMasks.push({
-    brand: 'Sneaker Swoosh Right-Bottom (Preventive)',
+    brand: 'Swoosh Grid L2-C1 (V2.5)',
     confidence: 100,
     polygon: [
-      { x: 0.70, y: 0.50 },  // Top-left
-      { x: 0.70 + swooshWidth, y: 0.50 },  // Top-right
-      { x: 0.70 + swooshWidth, y: 0.50 + swooshHeight },  // Bottom-right
-      { x: 0.70, y: 0.50 + swooshHeight }   // Bottom-left
+      { x: 0.10, y: 0.42 },
+      { x: 0.10 + swooshWidth, y: 0.42 },
+      { x: 0.10 + swooshWidth, y: 0.42 + swooshHeight },
+      { x: 0.10, y: 0.42 + swooshHeight }
     ]
   });
 
-  console.log(`   ✅ ${preventiveMasks.length} máscara(s) preventiva(s) de swoosh adicionadas`);
-  console.log(`   📍 Cobrindo: laterais esquerda e direita (onde swoosh costuma aparecer)`);
+  // 5. Centro-MeioAlto (x: 34-66%, y: 42-64%) - **ÁREA CRÍTICA SWOOSH FRONTAL**
+  preventiveMasks.push({
+    brand: 'Swoosh Grid L2-C2 (V2.5 - CRITICAL)',
+    confidence: 100,
+    polygon: [
+      { x: 0.34, y: 0.42 },
+      { x: 0.34 + swooshWidth, y: 0.42 },
+      { x: 0.34 + swooshWidth, y: 0.42 + swooshHeight },
+      { x: 0.34, y: 0.42 + swooshHeight }
+    ]
+  });
+
+  // 6. Direita-MeioAlto (x: 58-90%, y: 42-64%)
+  preventiveMasks.push({
+    brand: 'Swoosh Grid L2-C3 (V2.5)',
+    confidence: 100,
+    polygon: [
+      { x: 0.58, y: 0.42 },
+      { x: 0.58 + swooshWidth, y: 0.42 },
+      { x: 0.58 + swooshWidth, y: 0.42 + swooshHeight },
+      { x: 0.58, y: 0.42 + swooshHeight }
+    ]
+  });
+
+  // LINHA 3: Meio-Baixo (y: 54-76%) - SOBREPOSIÇÃO COM LINHA 2
+  // 7. Esquerda-MeioBaixo (x: 10-42%, y: 54-76%)
+  preventiveMasks.push({
+    brand: 'Swoosh Grid L3-C1 (V2.5)',
+    confidence: 100,
+    polygon: [
+      { x: 0.10, y: 0.54 },
+      { x: 0.10 + swooshWidth, y: 0.54 },
+      { x: 0.10 + swooshWidth, y: 0.54 + swooshHeight },
+      { x: 0.10, y: 0.54 + swooshHeight }
+    ]
+  });
+
+  // 8. Centro-MeioBaixo (x: 34-66%, y: 54-76%) - **ÁREA CRÍTICA SWOOSH FRONTAL BAIXO**
+  preventiveMasks.push({
+    brand: 'Swoosh Grid L3-C2 (V2.5 - CRITICAL)',
+    confidence: 100,
+    polygon: [
+      { x: 0.34, y: 0.54 },
+      { x: 0.34 + swooshWidth, y: 0.54 },
+      { x: 0.34 + swooshWidth, y: 0.54 + swooshHeight },
+      { x: 0.34, y: 0.54 + swooshHeight }
+    ]
+  });
+
+  // 9. Direita-MeioBaixo (x: 58-90%, y: 54-76%)
+  preventiveMasks.push({
+    brand: 'Swoosh Grid L3-C3 (V2.5)',
+    confidence: 100,
+    polygon: [
+      { x: 0.58, y: 0.54 },
+      { x: 0.58 + swooshWidth, y: 0.54 },
+      { x: 0.58 + swooshWidth, y: 0.54 + swooshHeight },
+      { x: 0.58, y: 0.54 + swooshHeight }
+    ]
+  });
+
+  // LINHA 4: Base (y: 66-88%) - COBERTURA FINAL
+  // 10. Esquerda-Base (x: 10-42%, y: 66-88%)
+  preventiveMasks.push({
+    brand: 'Swoosh Grid L4-C1 (V2.5)',
+    confidence: 100,
+    polygon: [
+      { x: 0.10, y: 0.66 },
+      { x: 0.10 + swooshWidth, y: 0.66 },
+      { x: 0.10 + swooshWidth, y: 0.66 + swooshHeight },
+      { x: 0.10, y: 0.66 + swooshHeight }
+    ]
+  });
+
+  // 11. Centro-Base (x: 34-66%, y: 66-88%)
+  preventiveMasks.push({
+    brand: 'Swoosh Grid L4-C2 (V2.5)',
+    confidence: 100,
+    polygon: [
+      { x: 0.34, y: 0.66 },
+      { x: 0.34 + swooshWidth, y: 0.66 },
+      { x: 0.34 + swooshWidth, y: 0.66 + swooshHeight },
+      { x: 0.34, y: 0.66 + swooshHeight }
+    ]
+  });
+
+  // 12. Direita-Base (x: 58-90%, y: 66-88%)
+  preventiveMasks.push({
+    brand: 'Swoosh Grid L4-C3 (V2.5)',
+    confidence: 100,
+    polygon: [
+      { x: 0.58, y: 0.66 },
+      { x: 0.58 + swooshWidth, y: 0.66 },
+      { x: 0.58 + swooshWidth, y: 0.66 + swooshHeight },
+      { x: 0.58, y: 0.66 + swooshHeight }
+    ]
+  });
+
+  console.log(`   ✅ ${preventiveMasks.length} máscara(s) preventivas em GRID 4x3 adicionadas (V2.5 FINAL)`);
+  console.log(`   📏 Tamanho otimizado: ${(swooshWidth*100).toFixed(0)}% x ${(swooshHeight*100).toFixed(0)}% (equilíbrio perfeito)`);
+  console.log(`   📍 Grid estratégico: 3 colunas x 4 linhas com sobreposição de 12%`);
 
   return preventiveMasks;
 }
