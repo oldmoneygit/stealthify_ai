@@ -42,7 +42,7 @@ export async function GET() {
     originalFiles.forEach(filename => {
       // Extract product ID (first 5 digits)
       const match = filename.match(/^(\d{5})-/);
-      if (match) {
+      if (match && match[1]) {
         const productId = match[1];
         productsMap.set(productId, {
           product_id: productId,
@@ -72,7 +72,7 @@ export async function GET() {
         files.forEach(filename => {
           // Extract product ID from edited filename
           const match = filename.match(/^(\d{5})-/);
-          if (match) {
+          if (match && match[1]) {
             const productId = match[1];
             const existing = productsMap.get(productId);
 

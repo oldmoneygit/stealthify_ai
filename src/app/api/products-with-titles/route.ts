@@ -72,7 +72,7 @@ export async function GET() {
 
       originalFiles.forEach(filename => {
         const match = filename.match(/^(\d{5})-/);
-        if (match) {
+        if (match && match[1]) {
           const productId = match[1];
           syncedImagesMap.set(productId, {
             original: `/api/original-images/${filename}`,
@@ -96,7 +96,7 @@ export async function GET() {
 
         files.forEach(filename => {
           const match = filename.match(/^(\d{5})-/);
-          if (match) {
+          if (match && match[1]) {
             const productId = match[1];
             const existing = syncedImagesMap.get(productId) || { original: null, edited: null, directory: null };
 
