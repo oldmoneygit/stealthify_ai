@@ -200,10 +200,14 @@ export async function createWooCommerceOrder(
 
     const response = await wooApi.post("orders", orderData);
 
+    // Log full response for debugging
+    console.log('✅ [WooCommerce] Resposta completa:', JSON.stringify(response.data, null, 2));
+
     console.log('✅ [WooCommerce] Pedido criado:', {
       id: response.data.id,
       order_key: response.data.order_key,
-      total: response.data.total
+      total: response.data.total,
+      status: response.data.status
     });
 
     return response.data as WooCommerceOrder;
