@@ -82,6 +82,7 @@ export async function saveImageWithBoundingBoxes(
 
     for (let i = 0; i < regions.length; i++) {
       const region = regions[i];
+      if (!region) continue;
 
       // USAR COORDENADAS DO BOUNDING POLY (pixels reais do Vision API)
       const vertices = region.boundingPoly.vertices;
@@ -195,6 +196,7 @@ export async function saveImageWithMaskPreview(
 
     for (let i = 0; i < regions.length; i++) {
       const region = regions[i];
+      if (!region) continue;
       const [ymin, xmin, ymax, xmax] = region.box_2d;
 
       // Converter para pixels (com padding de 20px)
