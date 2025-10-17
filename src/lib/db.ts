@@ -9,11 +9,14 @@ const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || proce
 
 function getDb() {
   if (isBuildTime) {
-    // During build, return a mock that throws helpful errors
+    // During build, return a mock that doesn't throw errors
+    console.warn('⚠️ SQLite database not available during build - using mock');
     return {
-      prepare: () => {
-        throw new Error('Database not available during build time');
-      },
+      prepare: () => ({
+        all: () => [],
+        get: () => null,
+        run: () => ({ changes: 0 })
+      }),
       pragma: () => {},
       exec: () => {}
     };
