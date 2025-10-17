@@ -181,6 +181,57 @@ export interface WooCommerceOrder {
 }
 
 /**
+ * Check if order already exists by Shopify order ID (idempotency)
+ */
+export async function checkIfOrderExists(shopifyOrderId: string): Promise<WooCommerceOrder | null> {
+  try {
+    const response = await wooApi.get("orders", {
+      meta_key: '_shopify_order_id',
+      meta_value: shopifyOrderId,
+      per_page: 1
+    });
+
+    if (response.data && response.data.length > 0) {
+      console.log(`✅ [WooCommerce] Pedido já existe com Shopify ID ${shopifyOrderId}:`, {
+        woo_order_id: response.data[0].id,
+        status: response.data[0].status
+      });
+      return response.data[0];
+    }
+
+    return null;
+  } catch (error: any) {
+    console.error('❌ [WooCommerce] Erro ao verificar pedido existente:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Update order status in WooCommerce
+ */
+export async function updateOrderStatus(
+  orderId: number,
+  status: string
+): Promise<WooCommerceOrder> {
+  try {
+    console.log(`🔄 [WooCommerce] Atualizando status do pedido ${orderId} para "${status}"...`);
+
+    const response = await wooApi.put(`orders/${orderId}`, { status });
+
+    console.log(`✅ [WooCommerce] Status atualizado:`, {
+      id: response.data.id,
+      old_status: response.data.status,
+      new_status: status
+    });
+
+    return response.data;
+  } catch (error: any) {
+    console.error(`❌ [WooCommerce] Erro ao atualizar status do pedido ${orderId}:`, error.response?.data || error.message);
+    throw error;
+  }
+}
+
+/**
  * Create an order in WooCommerce
  *
  * This function is used by the Shopify webhook to sync orders back to WooCommerce

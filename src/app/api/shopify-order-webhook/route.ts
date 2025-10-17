@@ -1,17 +1,19 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getProductByShopifyVariantId } from '@/lib/supabase';
-import { createWooCommerceOrder } from '@/services/woocommerce.service';
+import { createWooCommerceOrder, checkIfOrderExists, updateOrderStatus } from '@/services/woocommerce.service';
 
 /**
  * 🔄 API ROUTE: Shopify Order Webhook → WooCommerce Order Sync
  *
  * POST /api/shopify-order-webhook
  *
- * Este endpoint recebe webhooks da Shopify quando um pedido é criado
- * e cria automaticamente o pedido correspondente no WooCommerce
+ * Este endpoint recebe webhooks da Shopify quando um pedido é criado ou atualizado
+ * e sincroniza automaticamente com o WooCommerce
  *
- * Shopify Webhook Event: orders/create
+ * Shopify Webhook Events:
+ * - orders/create: Cria novo pedido no WooCommerce
+ * - orders/updated: Atualiza status do pedido no WooCommerce
  */
 
 interface ShopifyLineItem {
@@ -61,6 +63,32 @@ interface ShopifyOrder {
   line_items: ShopifyLineItem[];
   order_number: number;
   name: string;
+}
+
+interface WebhookError {
+  timestamp: string;
+  error: string;
+  shopify_order_id?: number;
+  details?: any;
+}
+
+// In-memory error log (últimos 100 erros)
+const errorLog: WebhookError[] = [];
+
+function logWebhookError(error: string, shopifyOrderId?: number, details?: any) {
+  const entry: WebhookError = {
+    timestamp: new Date().toISOString(),
+    error,
+    shopify_order_id: shopifyOrderId,
+    details
+  };
+
+  errorLog.unshift(entry);
+  if (errorLog.length > 100) {
+    errorLog.pop();
+  }
+
+  console.error('❌ [Webhook Error Log]', entry);
 }
 
 /**
@@ -126,16 +154,37 @@ function mapFulfillmentStatus(
   return mapPaymentStatus(financialStatus);
 }
 
+/**
+ * GET /api/shopify-order-webhook/errors
+ * Retorna log de erros dos webhooks
+ */
+export async function GET() {
+  return NextResponse.json({
+    total_errors: errorLog.length,
+    errors: errorLog.slice(0, 20) // Últimos 20 erros
+  });
+}
+
+/**
+ * POST /api/shopify-order-webhook
+ * Processa webhooks de criação/atualização de pedidos
+ */
 export async function POST(request: Request) {
+  const startTime = Date.now();
+
   try {
     console.log('📥 [Webhook] Recebendo webhook da Shopify...');
 
     // 1. Ler body como texto para verificação HMAC
     const bodyText = await request.text();
     const hmacHeader = request.headers.get('x-shopify-hmac-sha256');
+    const topic = request.headers.get('x-shopify-topic');
+
+    console.log('📋 [Webhook] Topic:', topic);
 
     // 2. Verificar assinatura do webhook
     if (!verifyWebhookSignature(bodyText, hmacHeader)) {
+      logWebhookError('Invalid HMAC signature');
       return NextResponse.json({
         success: false,
         error: 'Invalid webhook signature'
@@ -152,10 +201,68 @@ export async function POST(request: Request) {
       order_number: shopifyOrder.order_number,
       email: shopifyOrder.email,
       total: shopifyOrder.total_price,
-      items: shopifyOrder.line_items.length
+      items: shopifyOrder.line_items.length,
+      topic
     });
 
-    // 4. Mapear line items Shopify → WooCommerce
+    // 4. IDEMPOTÊNCIA: Verificar se pedido já existe
+    const existingOrder = await checkIfOrderExists(shopifyOrder.id.toString());
+
+    if (existingOrder) {
+      // Se topic for "orders/updated", atualizar status
+      if (topic === 'orders/updated') {
+        const newStatus = mapFulfillmentStatus(
+          shopifyOrder.financial_status,
+          shopifyOrder.fulfillment_status
+        );
+
+        // Atualizar apenas se status for diferente
+        if (existingOrder.status !== newStatus) {
+          console.log(`🔄 [Webhook] Atualizando status: ${existingOrder.status} → ${newStatus}`);
+
+          await updateOrderStatus(existingOrder.id, newStatus);
+
+          const duration = Date.now() - startTime;
+          return NextResponse.json({
+            success: true,
+            action: 'updated',
+            woo_order_id: existingOrder.id,
+            shopify_order_id: shopifyOrder.id,
+            old_status: existingOrder.status,
+            new_status: newStatus,
+            duration_ms: duration
+          });
+        } else {
+          console.log(`ℹ️ [Webhook] Status já está correto (${existingOrder.status}), nada a fazer`);
+
+          const duration = Date.now() - startTime;
+          return NextResponse.json({
+            success: true,
+            action: 'skipped',
+            reason: 'Status already up to date',
+            woo_order_id: existingOrder.id,
+            shopify_order_id: shopifyOrder.id,
+            status: existingOrder.status,
+            duration_ms: duration
+          });
+        }
+      }
+
+      // Se for orders/create mas pedido já existe, retornar sucesso (idempotência)
+      console.log('ℹ️ [Webhook] Pedido já existe, retornando sucesso (idempotente)');
+
+      const duration = Date.now() - startTime;
+      return NextResponse.json({
+        success: true,
+        action: 'exists',
+        woo_order_id: existingOrder.id,
+        shopify_order_id: shopifyOrder.id,
+        status: existingOrder.status,
+        duration_ms: duration
+      });
+    }
+
+    // 5. Mapear line items Shopify → WooCommerce
     console.log('🔄 [Webhook] Mapeando produtos...');
 
     const lineItems = [];
@@ -186,21 +293,25 @@ export async function POST(request: Request) {
       });
     }
 
-    // 5. Se algum produto não foi encontrado, avisar mas continuar
+    // 6. Se algum produto não foi encontrado, avisar mas continuar
     if (notFound.length > 0) {
       console.warn('⚠️ [Webhook] Produtos não mapeados:', notFound);
+      logWebhookError('Produtos não encontrados', shopifyOrder.id, notFound);
       // Continuar com os produtos que foram encontrados
     }
 
     if (lineItems.length === 0) {
+      const error = 'Nenhum produto foi mapeado para WooCommerce';
+      logWebhookError(error, shopifyOrder.id, { not_found: notFound });
+
       return NextResponse.json({
         success: false,
-        error: 'Nenhum produto foi mapeado para WooCommerce',
+        error,
         not_found: notFound
       }, { status: 404 });
     }
 
-    // 6. Determinar status do pedido
+    // 7. Determinar status do pedido
     const orderStatus = mapFulfillmentStatus(
       shopifyOrder.financial_status,
       shopifyOrder.fulfillment_status
@@ -212,7 +323,7 @@ export async function POST(request: Request) {
       woo_status: orderStatus
     });
 
-    // 7. Criar pedido no WooCommerce
+    // 8. Criar pedido no WooCommerce
     console.log('🛒 [Webhook] Criando pedido no WooCommerce...');
 
     const wooOrder = await createWooCommerceOrder({
@@ -261,26 +372,39 @@ export async function POST(request: Request) {
       ]
     });
 
+    const duration = Date.now() - startTime;
+
     console.log('✅ [Webhook] Pedido criado no WooCommerce:', {
       woo_order_id: wooOrder.id,
       shopify_order_id: shopifyOrder.id,
-      status: wooOrder.status
+      status: wooOrder.status,
+      duration_ms: duration
     });
 
     return NextResponse.json({
       success: true,
+      action: 'created',
       woo_order_id: wooOrder.id,
       shopify_order_id: shopifyOrder.id,
       status: wooOrder.status,
       items_synced: lineItems.length,
-      items_not_found: notFound.length
+      items_not_found: notFound.length,
+      duration_ms: duration
     });
 
   } catch (error: any) {
+    const duration = Date.now() - startTime;
+
     console.error('❌ [Webhook] Erro ao processar webhook:', error);
+    logWebhookError(error.message, undefined, {
+      stack: error.stack,
+      duration_ms: duration
+    });
+
     return NextResponse.json({
       success: false,
-      error: error.message
+      error: error.message,
+      duration_ms: duration
     }, { status: 500 });
   }
 }
