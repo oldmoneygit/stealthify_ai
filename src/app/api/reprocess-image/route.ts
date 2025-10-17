@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
         }]);
       }
 
-      finalImage = await sharpInstance.toBuffer();
+      finalImage = Buffer.from(await sharpInstance.toBuffer());
       console.log('✅ [Reprocess] Applied smart blur to', blurRegions.length, 'regions');
     } else {
       console.log('✅ [Reprocess] Image is clean! No blur needed.');
