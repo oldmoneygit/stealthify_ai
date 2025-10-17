@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "api/**/*.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
+  "env": {
+    "SKIP_DB_INIT": "true"
+  }
+}
