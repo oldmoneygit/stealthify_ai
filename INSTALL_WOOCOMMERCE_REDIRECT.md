@@ -2,19 +2,15 @@
 
 ## 📝 Passo a Passo
 
-### **1. Atualizar URL da API no JavaScript**
+### **1. URL da API Configurada**
 
-Primeiro, você precisa editar o arquivo `public/woocommerce-redirect.js` e substituir a URL placeholder:
+✅ A URL da API já está configurada no arquivo `public/woocommerce-redirect.js`:
 
 ```javascript
-// Linha 19: Trocar por sua URL real
-const API_URL = 'https://SEU_DOMINIO.com/api/woo-to-shopify-redirect';
+const API_URL = 'https://redirect-woo-shopify.vercel.app/api/woo-to-shopify-redirect';
 ```
 
-**Exemplo**:
-```javascript
-const API_URL = 'https://brand-camouflage.vercel.app/api/woo-to-shopify-redirect';
-```
+**Esta é a URL de produção no Vercel que está ativa agora!**
 
 ---
 

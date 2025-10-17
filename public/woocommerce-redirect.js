@@ -16,7 +16,7 @@
   'use strict';
 
   // URL da sua API de redirecionamento
-  const API_URL = 'https://SEU_DOMINIO/api/woo-to-shopify-redirect';
+  const API_URL = 'https://redirect-woo-shopify.vercel.app/api/woo-to-shopify-redirect';
 
   console.log('🔄 [WooCommerce → Shopify] Script carregado');
 
