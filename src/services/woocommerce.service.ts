@@ -198,19 +198,34 @@ export async function createWooCommerceOrder(
       customer: `${orderData.billing.first_name} ${orderData.billing.last_name}`
     });
 
+    console.log('📤 [WooCommerce] Payload enviado:', JSON.stringify(orderData, null, 2));
+
     const response = await wooApi.post("orders", orderData);
 
-    // Log full response for debugging
-    console.log('✅ [WooCommerce] Resposta completa:', JSON.stringify(response.data, null, 2));
+    console.log('📥 [WooCommerce] Status da resposta:', response.status);
+    console.log('📥 [WooCommerce] Tipo da resposta:', Array.isArray(response.data) ? 'Array' : 'Object');
+
+    // Handle both single object and array responses
+    let orderCreated: any;
+
+    if (Array.isArray(response.data)) {
+      // If array, get the first item (newest order)
+      console.warn('⚠️ [WooCommerce] API retornou array, pegando primeiro item');
+      orderCreated = response.data[0];
+    } else {
+      // Normal case: single object
+      orderCreated = response.data;
+    }
 
     console.log('✅ [WooCommerce] Pedido criado:', {
-      id: response.data.id,
-      order_key: response.data.order_key,
-      total: response.data.total,
-      status: response.data.status
+      id: orderCreated.id,
+      order_key: orderCreated.order_key,
+      total: orderCreated.total,
+      status: orderCreated.status,
+      number: orderCreated.number
     });
 
-    return response.data as WooCommerceOrder;
+    return orderCreated as WooCommerceOrder;
   } catch (error: any) {
     console.error('❌ [WooCommerce] Erro ao criar pedido:', error.response?.data || error.message);
 
