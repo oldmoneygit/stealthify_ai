@@ -186,11 +186,11 @@ export async function POST(request: NextRequest) {
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const idx = y * width + x;
-        const center = data[idx];
-        const top = data[(y - 1) * width + x];
-        const bottom = data[(y + 1) * width + x];
-        const left = data[y * width + (x - 1)];
-        const right = data[y * width + (x + 1)];
+        const center = data[idx] ?? 0;
+        const top = data[(y - 1) * width + x] ?? 0;
+        const bottom = data[(y + 1) * width + x] ?? 0;
+        const left = data[y * width + (x - 1)] ?? 0;
+        const right = data[y * width + (x + 1)] ?? 0;
 
         const laplacian = Math.abs(top + bottom + left + right - 4 * center);
         laplacianSum += laplacian * laplacian;
