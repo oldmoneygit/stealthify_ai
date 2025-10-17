@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getProductsBySKUs } from '@/lib/supabase';
 
 /**
  * 🔄 API ROUTE: Redirecionamento WooCommerce → Shopify Checkout
@@ -52,38 +52,40 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    // Buscar produtos importados no banco de dados pelo SKU
+    // Buscar produtos importados no Supabase pelo SKU
     const skus = items.map(item => item.sku);
-    const placeholders = skus.map(() => '?').join(',');
+    const products = await getProductsBySKUs(skus);
 
-    const stmt = db.prepare(`
-      SELECT
-        p.sku,
-        p.price,
-        a.shopify_product_id,
-        a.shopify_variant_id
-      FROM products p
-      INNER JOIN analyses a ON p.id = a.product_id
-      WHERE p.sku IN (${placeholders})
-      AND a.shopify_product_id IS NOT NULL
-      AND a.shopify_variant_id IS NOT NULL
-    `);
+    console.log('📦 [Mapeamento] Produtos encontrados:', products.length);
 
-    const shopifyProducts = stmt.all(...skus) as ShopifyProduct[];
-
-    console.log('📦 [Mapeamento] Produtos encontrados:', shopifyProducts.length);
-
-    if (shopifyProducts.length === 0) {
+    if (products.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'Nenhum produto foi importado para a Shopify ainda. Importe os produtos primeiro.'
       }, { status: 404 });
     }
 
-    // Criar mapa SKU → Shopify Variant ID
+    // Filtrar apenas produtos com Shopify IDs
+    const shopifyProducts = products.filter(p =>
+      p.shopify_product_id && p.shopify_variant_id
+    );
+
+    if (shopifyProducts.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Produtos encontrados mas não foram importados para Shopify.'
+      }, { status: 404 });
+    }
+
+    // Criar mapa SKU → Shopify data
     const skuMap = new Map<string, ShopifyProduct>();
     shopifyProducts.forEach(product => {
-      skuMap.set(product.sku, product);
+      skuMap.set(product.sku, {
+        shopify_product_id: product.shopify_product_id!,
+        shopify_variant_id: product.shopify_variant_id!,
+        sku: product.sku,
+        price: product.price
+      });
     });
 
     // Validar se todos os SKUs foram encontrados
