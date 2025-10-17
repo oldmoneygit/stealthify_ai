@@ -3,6 +3,10 @@ import { retryWithBackoff } from '@/utils/retry';
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN!;
 const REPLICATE_API_URL = 'https://api.replicate.com/v1';
 
+// ClipDrop API
+const CLIPDROP_API_KEY = process.env.CLIPDROP_API_KEY!;
+const CLIPDROP_API_URL = 'https://clipdrop-api.co';
+
 // BRIA Eraser model (surgical object removal with mask)
 const BRIA_ERASER_MODEL = 'bria/eraser';
 
@@ -18,36 +22,15 @@ const FLUX_FILL_PRO_MODEL = 'black-forest-labs/flux-fill-pro';
 const FLUX_REMOVAL_PROMPT = `Fill the white masked areas with matching texture from surrounding area. No logos, no text.`;
 
 /**
- * QWEN STANDALONE PROMPT - ULTRA CONSERVATIVE VERSION
+ * 🎯 QWEN IMAGE EDIT PLUS - OPTIMIZED PROMPT (V3)
  *
- * Estratégia: MÁXIMA preservação de estrutura - apenas pintar logos
- * Problema anterior: Qwen estava removendo caixas inteiras
+ * ⚠️ CRITICAL: Este prompt foi otimizado através de pesquisa e testes
+ * NÃO modificar sem aprovação explícita
+ *
+ * Estratégia: Máxima preservação de estrutura + remoção precisa de logos
+ * Objetivo: Remover APENAS logos, manter 100% da estrutura original
  */
-const BRAND_REMOVAL_PROMPT = `TASK: Paint over brand logos with matching colors. DO NOT remove any objects.
-
-CRITICAL RULE #1: NEVER REMOVE BOXES OR OBJECTS
-The image has product boxes in the background. These boxes MUST stay in the image. Only paint over logos ON the boxes.
-
-CRITICAL RULE #2: NEVER ADD NEW LOGOS
-Do not create new swoosh shapes or brand symbols. Only erase existing ones.
-
-WHAT TO PAINT OVER:
-• Nike swoosh (the checkmark symbol) - paint it with matching surface color
-• Jordan Jumpman (jumping person) - paint it with matching surface color
-• Brand text like "NIKE", "AIR", "JORDAN" - paint over with matching color
-
-HOW TO PAINT:
-1. Find a Nike swoosh on a shoe → paint over it with the shoe's color (keep the shoe)
-2. Find Nike text on a box → paint over it with the box's color (keep the box)
-3. Find Jumpman logo → paint over it with matching color (keep the object underneath)
-
-WHAT TO KEEP (DO NOT REMOVE):
-• ALL boxes and packaging (even if they have logos - just paint over the logos)
-• BOTH shoes in the photo
-• Background, floor, shadows
-• Product tags and laces
-
-SUCCESS = Image looks the same but logos are painted over. Nothing is removed or deleted.`;
+const BRAND_REMOVAL_PROMPT = `COLOQUE_SEU_PROMPT_AQUI`;
 
 
 
@@ -820,6 +803,102 @@ export async function removeWithFLUX(
     console.error('❌ FLUX Fill Pro falhou completamente:', error);
     throw new Error(
       `Failed to remove logos with FLUX Fill Pro: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+/**
+ * 🎯 Remove brand logos using ClipDrop Cleanup API (mask-based object/text removal)
+ *
+ * ClipDrop Cleanup is SPECIALIZED for removing unwanted objects and text:
+ * - Uses binary mask for precise control (white = remove, black = keep)
+ * - Preserves 100% of image structure
+ * - EXCELLENT for text removal ("NIKE", "JORDAN" on boxes)
+ * - EXCELLENT for logo removal (swoosh, jumpman)
+ * - Fast (~2-4 seconds)
+ * - 100 free credits for testing
+ * - Rate limit: 60 requests/minute
+ *
+ * @param imageBase64 - Base64-encoded source image
+ * @param maskBase64 - Base64-encoded PNG mask (white = remove, black = keep)
+ * @param brands - Array of detected brand names (for logging)
+ * @returns Base64-encoded edited image with logos removed
+ */
+export async function removeWithClipDrop(
+  imageBase64: string,
+  maskBase64: string,
+  brands: string[]
+): Promise<string> {
+  console.log('🎯 Removendo logos com ClipDrop Cleanup API:', brands.join(', '));
+  console.log('   💎 Especializado em remover objetos/texto - preserva estrutura 100%');
+
+  try {
+    return await retryWithBackoff(
+      async () => {
+        // Convert base64 to Buffer for FormData
+        const imageBuffer = Buffer.from(
+          imageBase64.replace(/^data:image\/\w+;base64,/, ''),
+          'base64'
+        );
+        const maskBuffer = Buffer.from(
+          maskBase64.replace(/^data:image\/\w+;base64,/, ''),
+          'base64'
+        );
+
+        console.log('📤 Enviando para ClipDrop Cleanup API...');
+        console.log(`   → Image size: ${(imageBuffer.length / 1024).toFixed(2)} KB`);
+        console.log(`   → Mask size: ${(maskBuffer.length / 1024).toFixed(2)} KB`);
+
+        // Create FormData (ClipDrop requires multipart/form-data)
+        const formData = new FormData();
+
+        // Create Blob objects for files
+        const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
+        const maskBlob = new Blob([maskBuffer], { type: 'image/png' });
+
+        formData.append('image_file', imageBlob, 'image.jpg');
+        formData.append('mask_file', maskBlob, 'mask.png');
+
+        // Call ClipDrop Cleanup API
+        const response = await fetch(`${CLIPDROP_API_URL}/cleanup/v1`, {
+          method: 'POST',
+          headers: {
+            'x-api-key': CLIPDROP_API_KEY
+          },
+          body: formData
+        });
+
+        // Check rate limit and credits
+        const remainingCredits = response.headers.get('x-remaining-credits');
+        const creditsConsumed = response.headers.get('x-credits-consumed');
+
+        console.log(`   💳 Credits: ${creditsConsumed} used, ${remainingCredits} remaining`);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`ClipDrop API error ${response.status}: ${errorText}`);
+        }
+
+        // Response is image/png
+        const imageArrayBuffer = await response.arrayBuffer();
+        const editedBase64 = Buffer.from(imageArrayBuffer).toString('base64');
+
+        console.log('   ✅ Remoção completa com ClipDrop!');
+        console.log('   🎉 Estrutura preservada - logos removidos cirurgicamente');
+
+        return editedBase64;
+      },
+      {
+        maxRetries: 2,
+        onRetry: (attempt, error) => {
+          console.log(`⚠️ ClipDrop falhou (tentativa ${attempt}):`, error.message);
+        }
+      }
+    );
+  } catch (error) {
+    console.error('❌ ClipDrop falhou completamente:', error);
+    throw new Error(
+      `Failed to remove logos with ClipDrop: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
   }
 }

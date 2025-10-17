@@ -178,11 +178,15 @@ export async function addCustomizableWatermark(
     fontSize?: number;
     fontColor?: string;
     fontFamily?: string;
-    position?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center';
+    position?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center' | 'custom';
+    customX?: number;
+    customY?: number;
     logoUrl?: string;
     logoOpacity?: number;
     logoSize?: number;
-    logoPosition?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center';
+    logoPosition?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center' | 'custom';
+    logoCustomX?: number;
+    logoCustomY?: number;
     useLogoOnly?: boolean;
   }
 ): Promise<string> {
@@ -223,38 +227,51 @@ export async function addCustomizableWatermark(
       let logoX = 0;
       let logoY = 0;
 
-      switch (logoPosition) {
-        case 'center':
-          logoX = Math.floor((width - logoSize) / 2);
-          logoY = Math.floor((height - logoSize) / 2);
-          break;
-        case 'top-left':
-          logoX = 20;
-          logoY = 20;
-          break;
-        case 'top-center':
-          logoX = Math.floor((width - logoSize) / 2);
-          logoY = 20;
-          break;
-        case 'top-right':
-          logoX = width - logoSize - 20;
-          logoY = 20;
-          break;
-        case 'bottom-left':
-          logoX = 20;
-          logoY = height - logoSize - 20;
-          break;
-        case 'bottom-center':
-          logoX = Math.floor((width - logoSize) / 2);
-          logoY = height - logoSize - 20;
-          break;
-        case 'bottom-right':
-          logoX = width - logoSize - 20;
-          logoY = height - logoSize - 20;
-          break;
-        default:
-          logoX = Math.floor((width - logoSize) / 2);
-          logoY = Math.floor((height - logoSize) / 2);
+      if (logoPosition === 'custom') {
+        // Custom positioning: use logoCustomX and logoCustomY as percentages (0-100)
+        const customX = settings.logoCustomX ?? 50; // Default to center
+        const customY = settings.logoCustomY ?? 50;
+
+        // Convert percentage to pixel coordinates
+        // Center the logo at the specified percentage point
+        logoX = Math.floor((width * customX / 100) - (logoSize / 2));
+        logoY = Math.floor((height * customY / 100) - (logoSize / 2));
+
+        console.log(`   🎯 Posição personalizada: ${customX}%, ${customY}% (${logoX}px, ${logoY}px)`);
+      } else {
+        switch (logoPosition) {
+          case 'center':
+            logoX = Math.floor((width - logoSize) / 2);
+            logoY = Math.floor((height - logoSize) / 2);
+            break;
+          case 'top-left':
+            logoX = 20;
+            logoY = 20;
+            break;
+          case 'top-center':
+            logoX = Math.floor((width - logoSize) / 2);
+            logoY = 20;
+            break;
+          case 'top-right':
+            logoX = width - logoSize - 20;
+            logoY = 20;
+            break;
+          case 'bottom-left':
+            logoX = 20;
+            logoY = height - logoSize - 20;
+            break;
+          case 'bottom-center':
+            logoX = Math.floor((width - logoSize) / 2);
+            logoY = height - logoSize - 20;
+            break;
+          case 'bottom-right':
+            logoX = width - logoSize - 20;
+            logoY = height - logoSize - 20;
+            break;
+          default:
+            logoX = Math.floor((width - logoSize) / 2);
+            logoY = Math.floor((height - logoSize) / 2);
+        }
       }
 
       // Create SVG overlay for logo opacity
@@ -298,36 +315,50 @@ export async function addCustomizableWatermark(
       // Calculate text position based on settings
       const textPosition = settings.position || 'center';
       let textStartY = (height - totalHeight) / 2;
-
-      switch (textPosition) {
-        case 'top-left':
-        case 'top-center':
-        case 'top-right':
-          textStartY = 50;
-          break;
-        case 'bottom-left':
-        case 'bottom-center':
-        case 'bottom-right':
-          textStartY = height - totalHeight - 50;
-          break;
-        case 'center':
-        default:
-          textStartY = (height - totalHeight) / 2;
-      }
-
-      // Text alignment based on position
       let textAnchor = 'middle';
       let textX = width / 2;
 
-      if (textPosition === 'top-left' || textPosition === 'bottom-left') {
-        textAnchor = 'start';
-        textX = 50;
-      } else if (textPosition === 'top-right' || textPosition === 'bottom-right') {
-        textAnchor = 'end';
-        textX = width - 50;
-      } else if (textPosition === 'center' || textPosition === 'top-center' || textPosition === 'bottom-center') {
+      if (textPosition === 'custom') {
+        // Custom positioning: use customX and customY as percentages (0-100)
+        const customX = settings.customX ?? 50; // Default to center
+        const customY = settings.customY ?? 50;
+
+        // Convert percentage to pixel coordinates
+        textX = Math.floor(width * customX / 100);
+        textStartY = Math.floor(height * customY / 100);
+
+        // Default to middle anchor for custom positioning
         textAnchor = 'middle';
-        textX = width / 2;
+
+        console.log(`   🎯 Posição de texto personalizada: ${customX}%, ${customY}% (${textX}px, ${textStartY}px)`);
+      } else {
+        switch (textPosition) {
+          case 'top-left':
+          case 'top-center':
+          case 'top-right':
+            textStartY = 50;
+            break;
+          case 'bottom-left':
+          case 'bottom-center':
+          case 'bottom-right':
+            textStartY = height - totalHeight - 50;
+            break;
+          case 'center':
+          default:
+            textStartY = (height - totalHeight) / 2;
+        }
+
+        // Text alignment based on position
+        if (textPosition === 'top-left' || textPosition === 'bottom-left') {
+          textAnchor = 'start';
+          textX = 50;
+        } else if (textPosition === 'top-right' || textPosition === 'bottom-right') {
+          textAnchor = 'end';
+          textX = width - 50;
+        } else if (textPosition === 'center' || textPosition === 'top-center' || textPosition === 'bottom-center') {
+          textAnchor = 'middle';
+          textX = width / 2;
+        }
       }
 
       const textSvg = `

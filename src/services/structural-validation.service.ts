@@ -122,11 +122,11 @@ export async function validateStructuralIntegrity(
 }
 
 /**
- * Aplica blur localizado nas regiões detectadas (fallback conservador)
+ * Aplica máscara preta nas regiões detectadas (Stealthify Prime strategy)
  *
  * @param imageBase64 - Imagem original em base64
  * @param brandRegions - Regiões com logos detectados (DetectionRegion[] com box_2d)
- * @returns Imagem com blur aplicado nas regiões
+ * @returns Imagem com máscara preta aplicada nas regiões
  */
 export async function applyLocalizedBlur(
   imageBase64: string,
@@ -134,7 +134,7 @@ export async function applyLocalizedBlur(
     box_2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] normalized 0-1000
   }>
 ): Promise<string> {
-  console.log('🌫️ Aplicando blur localizado nas regiões de logos...');
+  console.log('⬛ Aplicando máscara preta nas regiões de logos...');
 
   try {
     // Remove data URI prefix se existir
@@ -147,9 +147,9 @@ export async function applyLocalizedBlur(
     const height = metadata.height ?? 1000;
 
     console.log(`   Dimensões: ${width}x${height}`);
-    console.log(`   Regiões para blur: ${brandRegions.length}`);
+    console.log(`   Regiões para mascarar: ${brandRegions.length}`);
 
-    // Para cada região, criar máscara e aplicar blur
+    // Para cada região, criar e aplicar máscara preta
     let processedImage = sharp(imageBuffer);
 
     for (let i = 0; i < brandRegions.length; i++) {
@@ -163,8 +163,10 @@ export async function applyLocalizedBlur(
       // Extrair coordenadas do box_2d (normalizado 0-1000)
       const [ymin, xmin, ymax, xmax] = region.box_2d;
 
-      // Converter para pixels reais (com padding)
-      const padding = 10;
+      console.log(`   📍 Região ${i + 1} (normalized): ymin=${ymin}, xmin=${xmin}, ymax=${ymax}, xmax=${xmax}`);
+
+      // Converter para pixels reais (com padding AUMENTADO para garantir cobertura)
+      const padding = 20; // AUMENTADO de 10 para 20
       const minX = Math.max(0, Math.floor((xmin / 1000) * width) - padding);
       const maxX = Math.min(width, Math.ceil((xmax / 1000) * width) + padding);
       const minY = Math.max(0, Math.floor((ymin / 1000) * height) - padding);
@@ -178,38 +180,40 @@ export async function applyLocalizedBlur(
         continue;
       }
 
-      console.log(`   🔲 Região ${i + 1}: [${minX}, ${minY}] - [${maxX}, ${maxY}] (${regionWidth}x${regionHeight})`);
+      console.log(`   🔲 Região ${i + 1} (pixels): x=[${minX}-${maxX}], y=[${minY}-${maxY}], size=${regionWidth}x${regionHeight}`);
 
-      // Extrair região, aplicar blur, e recompor
-      const regionBuffer = await sharp(imageBuffer)
-        .extract({
-          left: minX,
-          top: minY,
+      // 🎯 STEALTHIFY PRIME: Aplicar MÁSCARA PRETA (não blur)
+      // Criar buffer preto sólido para a região
+      const blackMaskBuffer = await sharp({
+        create: {
           width: regionWidth,
-          height: regionHeight
-        })
-        .blur(20) // Blur forte para ocultar logos
+          height: regionHeight,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 1 } // Preto 100% opaco
+        }
+      })
+        .png()
         .toBuffer();
 
-      // Recompor imagem com região borrada
+      // Recompor imagem com máscara preta
       processedImage = processedImage.composite([
         {
-          input: regionBuffer,
+          input: blackMaskBuffer,
           top: minY,
           left: minX
         }
       ]);
     }
 
-    const blurredBuffer = await processedImage.png().toBuffer();
-    const blurredBase64 = `data:image/png;base64,${blurredBuffer.toString('base64')}`;
+    const maskedBuffer = await processedImage.png().toBuffer();
+    const maskedBase64 = `data:image/png;base64,${maskedBuffer.toString('base64')}`;
 
-    console.log('   ✅ Blur localizado aplicado com sucesso');
+    console.log('   ✅ Máscara preta aplicada com sucesso');
 
-    return blurredBase64;
+    return maskedBase64;
 
   } catch (error) {
-    console.error('   ❌ Erro ao aplicar blur localizado:', error);
+    console.error('   ❌ Erro ao aplicar máscara preta:', error);
     // Em caso de erro, retornar imagem original
     return imageBase64.startsWith('data:') ? imageBase64 : `data:image/png;base64,${imageBase64}`;
   }

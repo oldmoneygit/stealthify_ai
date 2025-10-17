@@ -35,25 +35,53 @@ export function regionsToSegments(regions: DetectionRegion[]): Segment[] {
 }
 
 /**
- * Create binary mask image from polygon segments for Vertex AI Imagen
+ * Create binary mask image from polygon segments for ClipDrop/Vertex AI
+ *
+ * 🎯 OTIMIZADO PARA MÁXIMA PRECISÃO:
+ * - Expande máscaras em 15% (recomendação ClipDrop docs)
+ * - Converte coordenadas normalizadas (0-1) para pixels exatos
+ * - Gera PNG de alta qualidade sem compressão
+ * - WHITE = áreas para remover, BLACK = áreas para preservar
  *
  * @param segments - Array of polygon segments
  * @param width - Image width in pixels
  * @param height - Image height in pixels
+ * @param expandPercent - Expand mask by percentage (default: 15% per ClipDrop docs)
  * @returns Base64-encoded mask image (white = edit these areas, black = keep unchanged)
  */
 export async function createMask(
   segments: Segment[],
   width: number,
-  height: number
+  height: number,
+  expandPercent: number = 15
 ): Promise<string> {
-  console.log('🎭 Criando máscara de', segments.length, 'segmentos...');
+  console.log(`🎭 Criando máscara PRECISA de ${segments.length} segmentos...`);
+  console.log(`   📏 Resolução: ${width}x${height}px`);
+  console.log(`   📐 Expansão: ${expandPercent}% (recomendação ClipDrop)`);
 
-  // Create SVG with polygons
-  // Vertex AI Imagen: WHITE areas = edit/inpaint, BLACK areas = preserve
-  const polygons = segments.map(segment => {
-    const points = segment.polygon
-      .map(p => `${p.x * width},${p.y * height}`)
+  // Create SVG with polygons (expanded for better coverage)
+  // ClipDrop/Vertex AI: WHITE areas = edit/inpaint, BLACK areas = preserve
+  const polygons = segments.map((segment, idx) => {
+    // Convert normalized coordinates (0-1) to pixel coordinates
+    const pixelPolygon = segment.polygon.map(p => ({
+      x: p.x * width,
+      y: p.y * height
+    }));
+
+    // Calculate centroid (center point)
+    const centroidX = pixelPolygon.reduce((sum, p) => sum + p.x, 0) / pixelPolygon.length;
+    const centroidY = pixelPolygon.reduce((sum, p) => sum + p.y, 0) / pixelPolygon.length;
+
+    // Expand polygon by moving each point away from centroid
+    const expandFactor = 1 + (expandPercent / 100);
+    const expandedPolygon = pixelPolygon.map(p => ({
+      x: centroidX + (p.x - centroidX) * expandFactor,
+      y: centroidY + (p.y - centroidY) * expandFactor
+    }));
+
+    // Convert to SVG points format
+    const points = expandedPolygon
+      .map(p => `${p.x},${p.y}`)
       .join(' ');
 
     return `<polygon points="${points}" fill="white" />`;  // WHITE = areas to edit
@@ -66,17 +94,19 @@ export async function createMask(
     </svg>
   `.trim();
 
-  // Convert SVG to PNG
+  // Convert SVG to PNG with maximum quality (no compression)
   const maskBuffer = await sharp(Buffer.from(svg))
-    .png()
+    .png({ compressionLevel: 0, quality: 100 })
     .toBuffer();
 
   const maskBase64 = maskBuffer.toString('base64');
 
-  console.log('✅ Máscara criada:', {
+  console.log('✅ Máscara PRECISA criada:', {
     segments: segments.length,
-    size: `${width}x${height}`,
-    base64Length: maskBase64.length
+    resolution: `${width}x${height}px`,
+    expanded: `${expandPercent}%`,
+    base64Length: maskBase64.length,
+    fileSizeKB: (maskBase64.length / 1024).toFixed(2)
   });
 
   return maskBase64;

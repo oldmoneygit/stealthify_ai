@@ -16,7 +16,9 @@ interface WatermarkSettings {
   logoUrl?: string;
   logoOpacity?: number;
   logoSize?: number;
-  logoPosition?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center';
+  logoPosition?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center' | 'custom';
+  logoCustomX?: number;
+  logoCustomY?: number;
   useLogoOnly?: boolean;
 }
 
@@ -425,7 +427,7 @@ export default function WatermarkSettingsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-3">
                       Posição do Logo
                     </label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-2 mb-3">
                       <button
                         type="button"
                         onClick={() => setSettings({ ...settings, logoPosition: 'top-left' })}
@@ -505,6 +507,84 @@ export default function WatermarkSettingsPage() {
                         ⬇️ Inf. Centro
                       </button>
                     </div>
+
+                    {/* Custom Position Button */}
+                    <button
+                      type="button"
+                      onClick={() => setSettings({
+                        ...settings,
+                        logoPosition: 'custom',
+                        logoCustomX: settings.logoCustomX ?? 50,
+                        logoCustomY: settings.logoCustomY ?? 50
+                      })}
+                      className={`w-full p-3 text-sm border-2 rounded-lg transition-all font-medium ${
+                        settings.logoPosition === 'custom'
+                          ? 'border-purple-600 bg-purple-50 text-purple-700'
+                          : 'border-gray-300 hover:border-purple-400'
+                      }`}
+                    >
+                      🎯 Posição Personalizada
+                    </button>
+
+                    {/* Custom X/Y Coordinate Controls */}
+                    {settings.logoPosition === 'custom' && (
+                      <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                        <p className="text-sm text-purple-800 mb-3 font-medium">
+                          Ajuste a posição do logo na imagem:
+                        </p>
+
+                        {/* X Coordinate */}
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-purple-900 mb-2">
+                            Posição Horizontal (X): {settings.logoCustomX ?? 50}%
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={settings.logoCustomX ?? 50}
+                            onChange={(e) => setSettings({
+                              ...settings,
+                              logoCustomX: Number(e.target.value)
+                            })}
+                            className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                          />
+                          <div className="flex justify-between text-xs text-purple-600 mt-1">
+                            <span>← Esquerda (0%)</span>
+                            <span>Direita (100%) →</span>
+                          </div>
+                        </div>
+
+                        {/* Y Coordinate */}
+                        <div>
+                          <label className="block text-sm font-medium text-purple-900 mb-2">
+                            Posição Vertical (Y): {settings.logoCustomY ?? 50}%
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={settings.logoCustomY ?? 50}
+                            onChange={(e) => setSettings({
+                              ...settings,
+                              logoCustomY: Number(e.target.value)
+                            })}
+                            className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                          />
+                          <div className="flex justify-between text-xs text-purple-600 mt-1">
+                            <span>↑ Topo (0%)</span>
+                            <span>Fundo (100%) ↓</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 p-2 bg-white rounded border border-purple-300">
+                          <p className="text-xs text-purple-700">
+                            💡 <strong>Dica:</strong> 0% é o canto superior esquerdo, 100% é o canto inferior direito.
+                            Use 50% em ambos para centralizar.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

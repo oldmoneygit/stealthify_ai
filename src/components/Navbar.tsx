@@ -8,9 +8,11 @@ export default function Navbar() {
 
   const links = [
     { href: '/', label: '🏠 Dashboard', icon: '🏠' },
-    { href: '/batch', label: '🚀 Processamento em Massa', icon: '🚀' },
-    { href: '/edited', label: '📦 Produtos Editados', icon: '📦' },
+    { href: '/blur-review', label: '🔄 Revisão & Reedição', icon: '🔄' },
+    { href: '/title-editor', label: '✏️ Editor de Títulos', icon: '✏️' },
     { href: '/watermark-settings', label: '💧 Marca d\'Água', icon: '💧' },
+    { href: '/shopify-import', label: '🛍️ Importar Shopify', icon: '🛍️' },
+    { href: '/batch', label: '🚀 Processamento', icon: '🚀' },
     { href: '/setup', label: '⚙️ Configurações', icon: '⚙️' },
   ];
 

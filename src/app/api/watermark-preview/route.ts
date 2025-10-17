@@ -12,11 +12,15 @@ interface WatermarkSettings {
   fontSize: number;
   fontColor: string;
   fontFamily: string;
-  position: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center';
+  position: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center' | 'custom';
+  customX?: number;
+  customY?: number;
   logoUrl?: string;
   logoOpacity?: number;
   logoSize?: number;
-  logoPosition?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center';
+  logoPosition?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center' | 'custom';
+  logoCustomX?: number;
+  logoCustomY?: number;
   useLogoOnly?: boolean;
   customImage?: string | null; // Imagem customizada do usuário
 }

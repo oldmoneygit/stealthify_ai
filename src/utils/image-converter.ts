@@ -109,13 +109,16 @@ export function base64ToBuffer(base64: string): Buffer {
 /**
  * Get image dimensions from base64
  *
- * @param base64 - Base64-encoded image
+ * @param base64 - Base64-encoded image (with or without data URL prefix)
  * @returns Width and height in pixels
  */
 export async function getImageDimensions(
   base64: string
 ): Promise<{ width: number; height: number }> {
-  const buffer = base64ToBuffer(base64);
+  // Remove data URL prefix if present (e.g., "data:image/png;base64,")
+  const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, '');
+
+  const buffer = base64ToBuffer(cleanBase64);
   const metadata = await sharp(buffer).metadata();
 
   if (!metadata.width || !metadata.height) {
