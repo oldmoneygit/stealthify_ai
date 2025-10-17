@@ -1,5 +1,12 @@
-import Database from 'better-sqlite3';
+// Load environment variables first
+import { config } from 'dotenv';
 import path from 'path';
+
+// Try .env first (Node.js standard), then .env.local (Next.js convention)
+config({ path: path.join(process.cwd(), '.env') });
+config({ path: path.join(process.cwd(), '.env.local') });
+
+import Database from 'better-sqlite3';
 import { supabase, upsertProduct, insertAnalysis } from '../src/lib/supabase';
 
 /**
