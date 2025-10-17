@@ -131,44 +131,21 @@ async function createShopifyCheckout(
   skuMap: Map<string, ShopifyProduct>
 ): Promise<string> {
   const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL!;
-  const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
 
-  // Preparar line items para a Shopify
-  const lineItems = items.map(item => {
+  // Preparar line items como variant_id:quantity
+  const cartItems = items.map(item => {
     const shopifyProduct = skuMap.get(item.sku)!;
-    return {
-      variant_id: shopifyProduct.shopify_variant_id,
-      quantity: item.quantity
-    };
+    // Remover 'gid://shopify/ProductVariant/' prefix se existir
+    const variantId = shopifyProduct.shopify_variant_id.replace('gid://shopify/ProductVariant/', '');
+    return `${variantId}:${item.quantity}`;
   });
 
-  console.log('🛒 [Checkout] Line items:', lineItems);
+  // Criar URL do carrinho Shopify (não requer API, funciona sempre)
+  // Formato: https://loja.myshopify.com/cart/VARIANT_ID:QUANTITY,VARIANT_ID:QUANTITY
+  const cartUrl = `${SHOPIFY_STORE_URL}/cart/${cartItems.join(',')}`;
 
-  // Criar checkout via Shopify API
-  const response = await fetch(
-    `${SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/checkouts.json`,
-    {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        checkout: {
-          line_items: lineItems
-        }
-      })
-    }
-  );
+  console.log('🛒 [Checkout] Cart URL criada:', cartUrl);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Shopify Checkout API error: ${response.status} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  const checkout = result.checkout;
-
-  // Retornar URL do checkout
-  return checkout.web_url;
+  // Retornar URL do carrinho (automaticamente redireciona para checkout)
+  return cartUrl;
 }
