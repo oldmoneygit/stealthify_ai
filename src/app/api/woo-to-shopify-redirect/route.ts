@@ -30,6 +30,18 @@ interface ShopifyProduct {
   price: number;
 }
 
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -41,7 +53,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         error: 'Nenhum item no carrinho'
-      }, { status: 400 });
+      }, { status: 400, headers: corsHeaders });
     }
 
     // Validar credenciais Shopify
@@ -49,7 +61,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         error: 'Credenciais Shopify não configuradas'
-      }, { status: 500 });
+      }, { status: 500, headers: corsHeaders });
     }
 
     // Buscar produtos importados no Supabase pelo SKU
@@ -62,7 +74,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         error: 'Nenhum produto foi importado para a Shopify ainda. Importe os produtos primeiro.'
-      }, { status: 404 });
+      }, { status: 404, headers: corsHeaders });
     }
 
     // Filtrar apenas produtos com Shopify IDs
@@ -74,7 +86,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         error: 'Produtos encontrados mas não foram importados para Shopify.'
-      }, { status: 404 });
+      }, { status: 404, headers: corsHeaders });
     }
 
     // Criar mapa SKU → Shopify data
@@ -101,7 +113,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         error: `Produtos não encontrados na Shopify: ${notFound.join(', ')}`
-      }, { status: 404 });
+      }, { status: 404, headers: corsHeaders });
     }
 
     // Criar checkout na Shopify
@@ -112,14 +124,14 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       checkout_url: checkoutUrl
-    });
+    }, { headers: corsHeaders });
 
   } catch (error: any) {
     console.error('❌ [Redirecionamento] Erro:', error);
     return NextResponse.json({
       success: false,
       error: error.message
-    }, { status: 500 });
+    }, { status: 500, headers: corsHeaders });
   }
 }
 
