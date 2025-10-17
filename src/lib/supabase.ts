@@ -347,3 +347,64 @@ export async function getProductsBySKUs(skus: string[]): Promise<ProductWithAnal
     };
   });
 }
+
+/**
+ * Get product by Shopify variant ID (reverse mapping for order sync)
+ *
+ * This function is used by the webhook to map Shopify products back to WooCommerce
+ */
+export async function getProductByShopifyVariantId(shopifyVariantId: string): Promise<ProductWithAnalysis | null> {
+  const { data, error } = await supabase
+    .from('analyses')
+    .select(`
+      shopify_product_id,
+      shopify_variant_id,
+      product_id,
+      products (
+        id,
+        woo_product_id,
+        sku,
+        name,
+        price,
+        regular_price,
+        sale_price,
+        image_url
+      )
+    `)
+    .eq('shopify_variant_id', shopifyVariantId)
+    .order('analyzed_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // No rows returned
+      return null;
+    }
+    console.error('❌ Error fetching product by Shopify variant ID:', error);
+    throw error;
+  }
+
+  if (!data || !data.products) {
+    return null;
+  }
+
+  const product = Array.isArray(data.products) ? data.products[0] : data.products;
+
+  if (!product) {
+    return null;
+  }
+
+  return {
+    id: product.id,
+    woo_product_id: product.woo_product_id,
+    sku: product.sku,
+    name: product.name,
+    price: product.price,
+    regular_price: product.regular_price,
+    sale_price: product.sale_price,
+    image_url: product.image_url,
+    shopify_product_id: data.shopify_product_id,
+    shopify_variant_id: data.shopify_variant_id
+  };
+}

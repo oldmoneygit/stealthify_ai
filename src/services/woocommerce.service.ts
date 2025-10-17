@@ -137,3 +137,88 @@ export async function testConnection(): Promise<boolean> {
     return false;
   }
 }
+
+// Types for WooCommerce Order creation
+export interface WooCommerceAddress {
+  first_name: string;
+  last_name: string;
+  address_1: string;
+  address_2?: string;
+  city: string;
+  state: string;
+  postcode: string;
+  country: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface WooCommerceLineItem {
+  product_id: number;
+  quantity: number;
+  total?: string;
+}
+
+export interface WooCommerceOrderData {
+  status: string;
+  customer_id?: number;
+  billing: WooCommerceAddress;
+  shipping: WooCommerceAddress;
+  line_items: WooCommerceLineItem[];
+  meta_data?: Array<{ key: string; value: string }>;
+}
+
+export interface WooCommerceOrder {
+  id: number;
+  status: string;
+  order_key: string;
+  currency: string;
+  total: string;
+  date_created: string;
+  billing: WooCommerceAddress;
+  shipping: WooCommerceAddress;
+  line_items: any[];
+  meta_data: any[];
+}
+
+/**
+ * Create an order in WooCommerce
+ *
+ * This function is used by the Shopify webhook to sync orders back to WooCommerce
+ *
+ * @param orderData - Order data from Shopify
+ * @returns Created WooCommerce order
+ */
+export async function createWooCommerceOrder(
+  orderData: WooCommerceOrderData
+): Promise<WooCommerceOrder> {
+  try {
+    console.log('🛒 [WooCommerce] Criando pedido...', {
+      status: orderData.status,
+      items: orderData.line_items.length,
+      customer: `${orderData.billing.first_name} ${orderData.billing.last_name}`
+    });
+
+    const response = await wooApi.post("orders", orderData);
+
+    console.log('✅ [WooCommerce] Pedido criado:', {
+      id: response.data.id,
+      order_key: response.data.order_key,
+      total: response.data.total
+    });
+
+    return response.data as WooCommerceOrder;
+  } catch (error: any) {
+    console.error('❌ [WooCommerce] Erro ao criar pedido:', error.response?.data || error.message);
+
+    // Log detailed error for debugging
+    if (error.response?.data) {
+      console.error('   Detalhes do erro:', JSON.stringify(error.response.data, null, 2));
+    }
+
+    throw new Error(
+      `Failed to create WooCommerce order: ${
+        error.response?.data?.message || error.message || 'Unknown error'
+      }`
+    );
+  }
+}
