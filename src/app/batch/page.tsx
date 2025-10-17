@@ -143,7 +143,7 @@ export default function BatchProcessingPage() {
   // Start batch processing
   const startBatchProcessing = async () => {
     if (products.length === 0) {
-      alert('Nenhum produto carregado. Clique em "Carregar Produtos" primeiro.');
+      alert('Nenhum produto carregado. Clique em &quot;Carregar Produtos&quot; primeiro.');
       return;
     }
 
@@ -461,7 +461,7 @@ export default function BatchProcessingPage() {
 
         {processedProducts.length === 0 && !isProcessing && (
           <div className="text-center py-12 text-gray-500">
-            Clique em "Carregar Produtos" para começar
+            Clique em &quot;Carregar Produtos&quot; para começar
           </div>
         )}
       </div>
