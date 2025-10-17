@@ -163,7 +163,8 @@ export async function POST(request: Request) {
 
     for (const item of shopifyOrder.line_items) {
       // Buscar produto WooCommerce pelo Shopify variant ID
-      const variantIdStr = `gid://shopify/ProductVariant/${item.variant_id}`;
+      // O banco armazena apenas o ID numérico, então usar diretamente
+      const variantIdStr = item.variant_id.toString();
       const wooProduct = await getProductByShopifyVariantId(variantIdStr);
 
       if (!wooProduct) {
