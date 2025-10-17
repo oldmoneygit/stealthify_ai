@@ -84,6 +84,8 @@ async function addPromotionalPricing() {
 
     for (let i = 0; i < allProducts.length; i++) {
       const product = allProducts[i];
+      if (!product) continue; // Type guard
+
       const productNumber = i + 1;
 
       console.log(`[${productNumber}/${allProducts.length}] ${product.sku}`);
