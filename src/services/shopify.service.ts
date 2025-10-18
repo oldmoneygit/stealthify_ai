@@ -396,3 +396,94 @@ export async function testConnection(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Busca códigos de desconto ativos na Shopify
+ *
+ * Retorna o código de desconto mais relevante que está ativo no momento
+ */
+export async function getActiveDiscountCode(): Promise<string | null> {
+  try {
+    console.log('🔍 [Shopify] Buscando descontos ativos...');
+
+    const url = `${process.env.SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/price_rules.json`;
+
+    const response = await fetch(url, {
+      headers: {
+        'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN!,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn('⚠️ [Shopify] Erro ao buscar price rules:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const priceRules = data.price_rules || [];
+
+    console.log(`📋 [Shopify] ${priceRules.length} price rules encontrados`);
+
+    if (priceRules.length === 0) {
+      return null;
+    }
+
+    // Filtrar apenas rules ativos agora
+    const now = new Date();
+    const activeRules = priceRules.filter((rule: any) => {
+      const startsAt = new Date(rule.starts_at);
+      const endsAt = rule.ends_at ? new Date(rule.ends_at) : null;
+
+      return startsAt <= now && (!endsAt || endsAt >= now);
+    });
+
+    console.log(`✅ [Shopify] ${activeRules.length} price rules ativos`);
+
+    if (activeRules.length === 0) {
+      return null;
+    }
+
+    // Pegar o primeiro rule ativo (ou o de maior desconto)
+    const bestRule = activeRules.sort((a: any, b: any) => {
+      const valueA = parseFloat(a.value);
+      const valueB = parseFloat(b.value);
+      return valueB - valueA; // Maior desconto primeiro
+    })[0];
+
+    console.log(`🎯 [Shopify] Melhor desconto: ${bestRule.title} (${bestRule.value}${bestRule.value_type === 'percentage' ? '%' : ' fixo'})`);
+
+    // Buscar códigos associados a esse price rule
+    const codesUrl = `${process.env.SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/price_rules/${bestRule.id}/discount_codes.json`;
+
+    const codesResponse = await fetch(codesUrl, {
+      headers: {
+        'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN!,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!codesResponse.ok) {
+      console.warn('⚠️ [Shopify] Erro ao buscar discount codes');
+      return null;
+    }
+
+    const codesData = await codesResponse.json();
+    const codes = codesData.discount_codes || [];
+
+    if (codes.length === 0) {
+      console.warn('⚠️ [Shopify] Price rule não tem códigos associados');
+      return null;
+    }
+
+    const discountCode = codes[0].code;
+
+    console.log(`✅ [Shopify] Código de desconto encontrado: ${discountCode}`);
+
+    return discountCode;
+
+  } catch (error: any) {
+    console.error('❌ [Shopify] Erro ao buscar descontos:', error.message);
+    return null;
+  }
+}

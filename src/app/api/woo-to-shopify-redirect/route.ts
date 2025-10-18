@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getProductsBySKUs } from '@/lib/supabase';
+import { getActiveDiscountCode } from '@/services/shopify.service';
 
 /**
  * 🔄 API ROUTE: Redirecionamento WooCommerce → Shopify Checkout
@@ -116,14 +117,18 @@ export async function POST(request: Request) {
       }, { status: 404, headers: corsHeaders });
     }
 
+    // Buscar desconto ativo (não bloqueia se falhar)
+    const discountCode = await getActiveDiscountCode().catch(() => null);
+
     // Criar checkout na Shopify
-    const checkoutUrl = await createShopifyCheckout(items, skuMap);
+    const checkoutUrl = await createShopifyCheckout(items, skuMap, discountCode);
 
     console.log('✅ [Checkout] URL criada:', checkoutUrl);
 
     return NextResponse.json({
       success: true,
-      checkout_url: checkoutUrl
+      checkout_url: checkoutUrl,
+      discount_applied: discountCode || undefined
     }, { headers: corsHeaders });
 
   } catch (error: any) {
@@ -137,10 +142,16 @@ export async function POST(request: Request) {
 
 /**
  * Cria um checkout na Shopify com os produtos do carrinho WooCommerce
+ *
+ * @param items - Itens do carrinho
+ * @param skuMap - Mapa de SKUs para produtos Shopify
+ * @param discountCode - Código de desconto (opcional)
+ * @returns URL do carrinho com desconto aplicado
  */
 async function createShopifyCheckout(
   items: CartItem[],
-  skuMap: Map<string, ShopifyProduct>
+  skuMap: Map<string, ShopifyProduct>,
+  discountCode: string | null = null
 ): Promise<string> {
   const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL!;
 
@@ -154,7 +165,13 @@ async function createShopifyCheckout(
 
   // Criar URL do carrinho Shopify (não requer API, funciona sempre)
   // Formato: https://loja.myshopify.com/cart/VARIANT_ID:QUANTITY,VARIANT_ID:QUANTITY
-  const cartUrl = `${SHOPIFY_STORE_URL}/cart/${cartItems.join(',')}`;
+  let cartUrl = `${SHOPIFY_STORE_URL}/cart/${cartItems.join(',')}`;
+
+  // Adicionar código de desconto se disponível
+  if (discountCode) {
+    cartUrl += `?discount=${encodeURIComponent(discountCode)}`;
+    console.log(`🎟️ [Checkout] Desconto aplicado: ${discountCode}`);
+  }
 
   console.log('🛒 [Checkout] Cart URL criada:', cartUrl);
 
