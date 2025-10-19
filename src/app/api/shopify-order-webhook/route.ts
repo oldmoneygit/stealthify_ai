@@ -44,6 +44,7 @@ interface ShopifyAddress {
   zip: string;
   phone: string | null;
   company: string | null;
+  email?: string;
 }
 
 interface ShopifyOrder {
@@ -63,6 +64,7 @@ interface ShopifyOrder {
   line_items: ShopifyLineItem[];
   order_number: number;
   name: string;
+  note: string | null;
 }
 
 interface WebhookError {
@@ -326,33 +328,56 @@ export async function POST(request: Request) {
     // 8. Criar pedido no WooCommerce
     console.log('🛒 [Webhook] Criando pedido no WooCommerce...');
 
+    // Validar e preparar endereços (com fallbacks seguros)
+    const billingAddress = shopifyOrder.billing_address || shopifyOrder.shipping_address || {};
+    const shippingAddress = shopifyOrder.shipping_address || shopifyOrder.billing_address || {};
+
+    // Email: tentar pegar do pedido, customer ou billing
+    const customerEmail = shopifyOrder.email ||
+                         shopifyOrder.customer?.email ||
+                         billingAddress.email ||
+                         'sem-email@shopify.com';
+
     const wooOrder = await createWooCommerceOrder({
       status: orderStatus,
       customer_id: 0, // Guest checkout
       billing: {
-        first_name: shopifyOrder.billing_address.first_name,
-        last_name: shopifyOrder.billing_address.last_name,
-        address_1: shopifyOrder.billing_address.address1,
-        address_2: shopifyOrder.billing_address.address2 || '',
-        city: shopifyOrder.billing_address.city,
-        state: shopifyOrder.billing_address.province,
-        postcode: shopifyOrder.billing_address.zip,
-        country: shopifyOrder.billing_address.country,
-        email: shopifyOrder.email,
-        phone: shopifyOrder.billing_address.phone || ''
+        first_name: billingAddress.first_name || shopifyOrder.customer?.first_name || 'Cliente',
+        last_name: billingAddress.last_name || shopifyOrder.customer?.last_name || 'Shopify',
+        company: billingAddress.company || '',
+        address_1: billingAddress.address1 || '',
+        address_2: billingAddress.address2 || '',
+        city: billingAddress.city || '',
+        state: billingAddress.province || '',
+        postcode: billingAddress.zip || '',
+        country: billingAddress.country || 'BR',
+        email: customerEmail,
+        phone: billingAddress.phone || ''
       },
       shipping: {
-        first_name: shopifyOrder.shipping_address.first_name,
-        last_name: shopifyOrder.shipping_address.last_name,
-        address_1: shopifyOrder.shipping_address.address1,
-        address_2: shopifyOrder.shipping_address.address2 || '',
-        city: shopifyOrder.shipping_address.city,
-        state: shopifyOrder.shipping_address.province,
-        postcode: shopifyOrder.shipping_address.zip,
-        country: shopifyOrder.shipping_address.country
+        first_name: shippingAddress.first_name || billingAddress.first_name || 'Cliente',
+        last_name: shippingAddress.last_name || billingAddress.last_name || 'Shopify',
+        company: shippingAddress.company || '',
+        address_1: shippingAddress.address1 || '',
+        address_2: shippingAddress.address2 || '',
+        city: shippingAddress.city || '',
+        state: shippingAddress.province || '',
+        postcode: shippingAddress.zip || '',
+        country: shippingAddress.country || 'BR'
       },
       line_items: lineItems,
+      shipping_lines: [
+        {
+          method_id: 'shopify_shipping',
+          method_title: 'Frete Shopify',
+          total: '0.00'
+        }
+      ],
+      payment_method: 'shopify',
+      payment_method_title: 'Pagamento via Shopify',
+      customer_note: shopifyOrder.note || '',
       meta_data: [
+        // IDs e identificadores
         {
           key: '_shopify_order_id',
           value: shopifyOrder.id.toString()
@@ -365,6 +390,64 @@ export async function POST(request: Request) {
           key: 'Pedido Shopify',  // Campo VISÍVEL no admin
           value: `#${shopifyOrder.order_number} (ID: ${shopifyOrder.id})`
         },
+        {
+          key: '_shopify_order_name',
+          value: shopifyOrder.name || `#${shopifyOrder.order_number}`
+        },
+
+        // Informações do cliente
+        {
+          key: '_shopify_customer_id',
+          value: shopifyOrder.customer?.id?.toString() || '0'
+        },
+        {
+          key: '_shopify_customer_email',
+          value: customerEmail
+        },
+        {
+          key: 'Cliente Shopify',
+          value: `${shopifyOrder.customer?.first_name || ''} ${shopifyOrder.customer?.last_name || ''}`.trim() || 'Guest'
+        },
+
+        // Valores e moeda
+        {
+          key: '_shopify_total_price',
+          value: shopifyOrder.total_price
+        },
+        {
+          key: '_shopify_subtotal_price',
+          value: shopifyOrder.subtotal_price
+        },
+        {
+          key: '_shopify_total_tax',
+          value: shopifyOrder.total_tax
+        },
+        {
+          key: '_shopify_currency',
+          value: shopifyOrder.currency
+        },
+
+        // Status
+        {
+          key: '_shopify_financial_status',
+          value: shopifyOrder.financial_status
+        },
+        {
+          key: '_shopify_fulfillment_status',
+          value: shopifyOrder.fulfillment_status || 'unfulfilled'
+        },
+
+        // Datas
+        {
+          key: '_shopify_created_at',
+          value: shopifyOrder.created_at
+        },
+        {
+          key: '_shopify_updated_at',
+          value: shopifyOrder.updated_at
+        },
+
+        // Sync metadata
         {
           key: '_synced_from_shopify',
           value: 'true'

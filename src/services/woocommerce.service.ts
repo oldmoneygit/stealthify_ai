@@ -143,6 +143,7 @@ export async function testConnection(): Promise<boolean> {
 export interface WooCommerceAddress {
   first_name: string;
   last_name: string;
+  company?: string;
   address_1: string;
   address_2?: string;
   city: string;
@@ -165,6 +166,14 @@ export interface WooCommerceOrderData {
   billing: WooCommerceAddress;
   shipping: WooCommerceAddress;
   line_items: WooCommerceLineItem[];
+  shipping_lines?: Array<{
+    method_id: string;
+    method_title: string;
+    total: string;
+  }>;
+  payment_method?: string;
+  payment_method_title?: string;
+  customer_note?: string;
   meta_data?: Array<{ key: string; value: string }>;
 }
 
