@@ -65,6 +65,9 @@ interface ShopifyOrder {
   order_number: number;
   name: string;
   note: string | null;
+  note_attributes?: Array<{ name: string; value: string }>;
+  gateway?: string;
+  payment_gateway_names?: string[];
 }
 
 interface WebhookError {
@@ -123,6 +126,92 @@ function verifyWebhookSignature(
   }
 
   return isValid;
+}
+
+/**
+ * Helper: Extrai valor de note_attributes
+ */
+function getNoteAttribute(noteAttributes: Array<{ name: string; value: string }> | undefined, key: string): string {
+  if (!noteAttributes) return '';
+  const attr = noteAttributes.find(a => a.name === key);
+  return attr?.value || '';
+}
+
+/**
+ * Helper: Parseia note_attributes e monta endereço completo
+ */
+function parseAddressFromNoteAttributes(
+  noteAttributes: Array<{ name: string; value: string }> | undefined,
+  type: 'billing' | 'shipping',
+  fallbackAddress: ShopifyAddress
+): {
+  first_name: string;
+  last_name: string;
+  company: string;
+  address_1: string;
+  address_2: string;
+  city: string;
+  state: string;
+  postcode: string;
+  country: string;
+  phone: string;
+} {
+  const streetName = getNoteAttribute(noteAttributes, `${type}_street_name`);
+  const streetNumber = getNoteAttribute(noteAttributes, `${type}_street_number`);
+  const streetComplement = getNoteAttribute(noteAttributes, `${type}_street_complement`);
+  const neighborhood = getNoteAttribute(noteAttributes, `${type}_neighborhood`);
+  const fullAddress = getNoteAttribute(noteAttributes, `${type}_full_address`);
+
+  // Construir address_1 e address_2
+  let address_1 = '';
+  let address_2 = '';
+
+  if (streetName && streetNumber) {
+    address_1 = `${streetName}, ${streetNumber}`;
+    if (streetComplement) {
+      address_2 = `${streetComplement}${neighborhood ? ' - ' + neighborhood : ''}`;
+    } else if (neighborhood && neighborhood !== 'Bairro Não Informado') {
+      address_2 = neighborhood;
+    }
+  } else if (fullAddress) {
+    // Usar fullAddress se disponível
+    const parts = fullAddress.split(' - ');
+    address_1 = parts[0] || '';
+    address_2 = parts.slice(1, -1).join(' - ') || '';
+  } else {
+    // Fallback para dados do billing/shipping_address
+    address_1 = fallbackAddress.address1 || '';
+    address_2 = fallbackAddress.address2 || '';
+  }
+
+  // Extrair cidade e CEP do fullAddress (formato: "rua, numero - bairro - cidade/estado - cep")
+  let city = '';
+  let postcode = '';
+  if (fullAddress) {
+    // Cidade (antes da barra)
+    const cityMatch = fullAddress.match(/- ([^/]+)\//);
+    if (cityMatch && cityMatch[1]) {
+      city = cityMatch[1].trim();
+    }
+    // CEP (após último hífen)
+    const postcodeMatch = fullAddress.match(/- (\d+)$/);
+    if (postcodeMatch && postcodeMatch[1]) {
+      postcode = postcodeMatch[1];
+    }
+  }
+
+  return {
+    first_name: '',  // Será preenchido depois com customer data
+    last_name: '',
+    company: '',
+    address_1,
+    address_2,
+    city: city || fallbackAddress.city || '',
+    state: fallbackAddress.province || '',
+    postcode: postcode || fallbackAddress.zip || '',
+    country: fallbackAddress.country || 'BR',
+    phone: ''
+  };
 }
 
 /**
@@ -328,42 +417,66 @@ export async function POST(request: Request) {
     // 8. Criar pedido no WooCommerce
     console.log('🛒 [Webhook] Criando pedido no WooCommerce...');
 
-    // Validar e preparar endereços (com fallbacks seguros)
-    const billingAddress = shopifyOrder.billing_address || shopifyOrder.shipping_address || {};
-    const shippingAddress = shopifyOrder.shipping_address || shopifyOrder.billing_address || {};
+    // Parsear endereços de note_attributes (onde estão os dados REAIS)
+    const billingAddressRaw = shopifyOrder.billing_address || shopifyOrder.shipping_address || {} as ShopifyAddress;
+    const shippingAddressRaw = shopifyOrder.shipping_address || shopifyOrder.billing_address || {} as ShopifyAddress;
+
+    const billingParsed = parseAddressFromNoteAttributes(
+      shopifyOrder.note_attributes,
+      'billing',
+      billingAddressRaw
+    );
+    const shippingParsed = parseAddressFromNoteAttributes(
+      shopifyOrder.note_attributes,
+      'shipping',
+      shippingAddressRaw
+    );
+
+    // Nome do cliente (priorizar customer, depois billing_address)
+    const firstName = shopifyOrder.customer?.first_name ||
+                     billingAddressRaw.first_name ||
+                     'Cliente';
+    const lastName = shopifyOrder.customer?.last_name ||
+                    billingAddressRaw.last_name ||
+                    'Shopify';
 
     // Email: tentar pegar do pedido, customer ou billing
     const customerEmail = shopifyOrder.email ||
                          shopifyOrder.customer?.email ||
-                         billingAddress.email ||
+                         billingAddressRaw.email ||
                          'sem-email@shopify.com';
+
+    // Telefone (pode estar em billing_address ou default_address do customer)
+    const customerPhone = billingAddressRaw.phone ||
+                         shippingAddressRaw.phone ||
+                         '';
 
     const wooOrder = await createWooCommerceOrder({
       status: orderStatus,
       customer_id: 0, // Guest checkout
       billing: {
-        first_name: billingAddress.first_name || shopifyOrder.customer?.first_name || 'Cliente',
-        last_name: billingAddress.last_name || shopifyOrder.customer?.last_name || 'Shopify',
-        company: billingAddress.company || '',
-        address_1: billingAddress.address1 || '',
-        address_2: billingAddress.address2 || '',
-        city: billingAddress.city || '',
-        state: billingAddress.province || '',
-        postcode: billingAddress.zip || '',
-        country: billingAddress.country || 'BR',
+        first_name: firstName,
+        last_name: lastName,
+        company: billingAddressRaw.company || '',
+        address_1: billingParsed.address_1,
+        address_2: billingParsed.address_2,
+        city: billingParsed.city,
+        state: billingParsed.state,
+        postcode: billingParsed.postcode,
+        country: billingParsed.country,
         email: customerEmail,
-        phone: billingAddress.phone || ''
+        phone: customerPhone
       },
       shipping: {
-        first_name: shippingAddress.first_name || billingAddress.first_name || 'Cliente',
-        last_name: shippingAddress.last_name || billingAddress.last_name || 'Shopify',
-        company: shippingAddress.company || '',
-        address_1: shippingAddress.address1 || '',
-        address_2: shippingAddress.address2 || '',
-        city: shippingAddress.city || '',
-        state: shippingAddress.province || '',
-        postcode: shippingAddress.zip || '',
-        country: shippingAddress.country || 'BR'
+        first_name: firstName,
+        last_name: lastName,
+        company: shippingAddressRaw.company || '',
+        address_1: shippingParsed.address_1,
+        address_2: shippingParsed.address_2,
+        city: shippingParsed.city,
+        state: shippingParsed.state,
+        postcode: shippingParsed.postcode,
+        country: shippingParsed.country
       },
       line_items: lineItems,
       shipping_lines: [
@@ -446,6 +559,22 @@ export async function POST(request: Request) {
           key: '_shopify_updated_at',
           value: shopifyOrder.updated_at
         },
+
+        // Payment gateway
+        {
+          key: 'Gateway Pagamento',
+          value: shopifyOrder.payment_gateway_names?.join(', ') || shopifyOrder.gateway || 'N/A'
+        },
+        {
+          key: '_shopify_payment_gateway',
+          value: shopifyOrder.gateway || ''
+        },
+
+        // Note attributes (dados adicionais do checkout Shopify)
+        ...(shopifyOrder.note_attributes || []).map(attr => ({
+          key: `Shopify: ${attr.name}`,
+          value: attr.value
+        })),
 
         // Sync metadata
         {
