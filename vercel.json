@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/sync-old-orders",
-      "schedule": "0 * * * *"
+      "schedule": "*/30 * * * *"
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createWooCommerceOrder, checkIfOrderExists } from '@/services/woocommerce.service';
+import { createWooCommerceOrder } from '@/services/woocommerce.service';
 import { getProductByShopifyVariantId } from '@/lib/supabase';
 
 /**
@@ -145,23 +145,29 @@ function getNoteAttribute(
 
 /**
  * Processa um pedido da Shopify
+ *
+ * ✅ LÓGICA SIMPLES:
+ * 1. Se pedido JÁ TEM tag 'woocommerce-sync' → PULAR (já sincronizado)
+ * 2. Se pedido NÃO TEM tag → CRIAR no WooCommerce + ADICIONAR tag
+ *
+ * A TAG é a fonte da verdade! Não precisa verificar WooCommerce.
  */
 async function processShopifyOrder(order: ShopifyOrder): Promise<{
   success: boolean;
   orderId?: number;
   error?: string;
+  skipped?: boolean;
 }> {
   try {
     console.log(`📦 Processando pedido Shopify #${order.order_number} (ID: ${order.id})`);
 
-    // 1. Verificar se já existe no WooCommerce
-    const existingOrder = await checkIfOrderExists(order.id.toString());
-    if (existingOrder) {
-      console.log(`✅ Pedido #${order.order_number} já existe no WooCommerce (ID: ${existingOrder.id})`);
-      // Adicionar tag no Shopify
-      await addShopifyOrderTag(order.id, 'woocommerce-sync');
-      return { success: true, orderId: existingOrder.id };
+    // 1. Verificar se pedido JÁ TEM tag (fonte da verdade)
+    if (hasTag(order, 'woocommerce-sync')) {
+      console.log(`⏭️ Pedido #${order.order_number} já tem tag 'woocommerce-sync', pulando...`);
+      return { success: true, skipped: true };
     }
+
+    console.log(`✅ Pedido #${order.order_number} SEM tag, criando no WooCommerce...`);
 
     // 2. Mapear produtos
     const lineItems = [];
