@@ -19,6 +19,29 @@ const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL!;
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
 const SHOPIFY_API_VERSION = '2024-01';
 
+interface ShopifyCustomer {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  default_address: {
+    address1: string;
+    address2: string | null;
+    city: string;
+    province: string;
+    province_code: string;
+    zip: string;
+    country: string;
+    country_code: string;
+    phone: string | null;
+  } | null;
+}
+
+interface ShopifyCustomerResponse {
+  customer: ShopifyCustomer;
+}
+
 interface ShopifyOrderResponse {
   orders: ShopifyOrder[];
 }
@@ -71,6 +94,40 @@ async function fetchShopifyOrders(limit = 250): Promise<ShopifyOrder[]> {
 
   const data: ShopifyOrderResponse = await response.json();
   return data.orders || [];
+}
+
+/**
+ * Busca dados completos do cliente na Shopify
+ *
+ * ✅ DADOS REAIS DO CLIENTE ao invés de fallbacks genéricos
+ */
+async function fetchShopifyCustomer(customerId: number): Promise<ShopifyCustomer | null> {
+  try {
+    console.log(`👤 Buscando cliente Shopify ID: ${customerId}`);
+
+    const url = `${SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/customers/${customerId}.json`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn(`⚠️ Cliente ${customerId} não encontrado: ${response.status}`);
+      return null;
+    }
+
+    const data: ShopifyCustomerResponse = await response.json();
+    console.log(`✅ Cliente encontrado: ${data.customer.first_name} ${data.customer.last_name} (${data.customer.email})`);
+    return data.customer;
+
+  } catch (error) {
+    console.error(`❌ Erro ao buscar cliente ${customerId}:`, error);
+    return null;
+  }
 }
 
 /**
@@ -191,26 +248,41 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
       return { success: false, error: 'No mapped products' };
     }
 
-    // 3. Extrair dados do cliente de note_attributes
-    const firstName = getNoteAttribute(order.note_attributes, 'billing_first_name') ||
+    // 3. 🎯 BUSCAR DADOS REAIS DO CLIENTE NA SHOPIFY
+    let customerData: ShopifyCustomer | null = null;
+
+    if (order.customer?.id) {
+      console.log(`👤 Pedido tem customer_id: ${order.customer.id}, buscando dados completos...`);
+      customerData = await fetchShopifyCustomer(order.customer.id);
+    } else {
+      console.warn(`⚠️ Pedido #${order.order_number} não tem customer_id`);
+    }
+
+    // Usar dados REAIS do customer (se encontrado) ou fallbacks
+    const firstName = customerData?.first_name ||
+                      getNoteAttribute(order.note_attributes, 'billing_first_name') ||
                       order.customer?.first_name ||
                       order.billing_address?.first_name ||
-                      'Cliente';  // Fallback se vazio
+                      'Cliente';
 
-    const lastName = getNoteAttribute(order.note_attributes, 'billing_last_name') ||
+    const lastName = customerData?.last_name ||
+                     getNoteAttribute(order.note_attributes, 'billing_last_name') ||
                      order.customer?.last_name ||
                      order.billing_address?.last_name ||
-                     'Shopify';  // Fallback se vazio
+                     'Shopify';
 
-    const email = order.customer?.email ||
+    const email = customerData?.email ||
+                  order.customer?.email ||
                   order.email ||
-                  `pedido-${order.order_number}@shopify.snkhouse.com`;  // ✅ Email padrão (WooCommerce exige)
+                  `pedido-${order.order_number}@shopify.snkhouse.com`;
 
-    const phone = getNoteAttribute(order.note_attributes, 'billing_phone') ||
+    const phone = customerData?.phone ||
+                  customerData?.default_address?.phone ||
+                  getNoteAttribute(order.note_attributes, 'billing_phone') ||
                   order.billing_address?.phone ||
-                  '0000000000';  // Fallback se vazio
+                  '0000000000';
 
-    // 4. Construir endereços
+    // 4. Construir endereços (priorizar customer.default_address)
     const streetName = getNoteAttribute(order.note_attributes, 'billing_street_name');
     const streetNumber = getNoteAttribute(order.note_attributes, 'billing_street_number');
 
@@ -218,12 +290,29 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
       first_name: firstName,
       last_name: lastName,
       company: '',
-      address_1: streetName && streetNumber ? `${streetName}, ${streetNumber}` : (order.billing_address?.address1 || 'Endereço não informado'),
-      address_2: getNoteAttribute(order.note_attributes, 'billing_street_complement') || (order.billing_address?.address2 || ''),
-      city: getNoteAttribute(order.note_attributes, 'billing_city') || (order.billing_address?.city || 'Cidade não informada'),
-      state: getNoteAttribute(order.note_attributes, 'billing_state') || (order.billing_address?.province_code || 'SP'),
-      postcode: getNoteAttribute(order.note_attributes, 'billing_postcode') || (order.billing_address?.zip || '00000-000'),
-      country: order.billing_address?.country_code || 'BR',
+      address_1: customerData?.default_address?.address1 ||
+                 (streetName && streetNumber ? `${streetName}, ${streetNumber}` : null) ||
+                 order.billing_address?.address1 ||
+                 'Endereço não informado',
+      address_2: customerData?.default_address?.address2 ||
+                 getNoteAttribute(order.note_attributes, 'billing_street_complement') ||
+                 order.billing_address?.address2 ||
+                 '',
+      city: customerData?.default_address?.city ||
+            getNoteAttribute(order.note_attributes, 'billing_city') ||
+            order.billing_address?.city ||
+            'Cidade não informada',
+      state: customerData?.default_address?.province_code ||
+             getNoteAttribute(order.note_attributes, 'billing_state') ||
+             order.billing_address?.province_code ||
+             'SP',
+      postcode: customerData?.default_address?.zip ||
+                getNoteAttribute(order.note_attributes, 'billing_postcode') ||
+                order.billing_address?.zip ||
+                '00000-000',
+      country: customerData?.default_address?.country_code ||
+               order.billing_address?.country_code ||
+               'BR',
       email: email,
       phone: phone
     };
