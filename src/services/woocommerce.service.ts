@@ -310,3 +310,126 @@ export async function createWooCommerceOrder(
     );
   }
 }
+
+/**
+ * Atualiza dados do cliente em um pedido WooCommerce existente
+ * Usado para adicionar dados capturados na Thank You Page da Shopify
+ */
+export async function updateWooCommerceOrderCustomer(
+  shopifyOrderId: string,
+  customerData: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    billing_address: {
+      first_name: string;
+      last_name: string;
+      address1: string;
+      address2: string;
+      city: string;
+      state: string;
+      postcode: string;
+      country: string;
+      phone: string;
+    };
+    shipping_address: {
+      first_name: string;
+      last_name: string;
+      address1: string;
+      address2: string;
+      city: string;
+      state: string;
+      postcode: string;
+      country: string;
+    };
+  }
+): Promise<{
+  success: boolean;
+  woo_order_id?: number;
+  updated_fields?: string[];
+  error?: string;
+}> {
+  try {
+    console.log(`🔍 [WooCommerce] Buscando pedido com Shopify ID: ${shopifyOrderId}`);
+
+    // 1. Buscar pedido WooCommerce pelo metadata _shopify_order_id
+    const searchResponse = await wooApi.get('orders', {
+      meta_key: '_shopify_order_id',
+      meta_value: shopifyOrderId,
+      per_page: 1
+    });
+
+    if (!searchResponse.data || searchResponse.data.length === 0) {
+      console.error(`❌ [WooCommerce] Pedido não encontrado com Shopify ID: ${shopifyOrderId}`);
+      return {
+        success: false,
+        error: `Order not found with Shopify ID ${shopifyOrderId}`
+      };
+    }
+
+    const wooOrder = searchResponse.data[0];
+    console.log(`✅ [WooCommerce] Pedido encontrado: #${wooOrder.id}`);
+
+    // 2. Preparar dados para atualização
+    const updateData: any = {
+      billing: {
+        first_name: customerData.billing_address.first_name,
+        last_name: customerData.billing_address.last_name,
+        address_1: customerData.billing_address.address1,
+        address_2: customerData.billing_address.address2,
+        city: customerData.billing_address.city,
+        state: customerData.billing_address.state,
+        postcode: customerData.billing_address.postcode,
+        country: customerData.billing_address.country,
+        email: customerData.email,
+        phone: customerData.billing_address.phone || customerData.phone
+      },
+      shipping: {
+        first_name: customerData.shipping_address.first_name,
+        last_name: customerData.shipping_address.last_name,
+        address_1: customerData.shipping_address.address1,
+        address_2: customerData.shipping_address.address2,
+        city: customerData.shipping_address.city,
+        state: customerData.shipping_address.state,
+        postcode: customerData.shipping_address.postcode,
+        country: customerData.shipping_address.country
+      },
+      meta_data: [
+        {
+          key: 'Dados capturados da Thank You Page',
+          value: new Date().toISOString()
+        },
+        {
+          key: '_customer_data_source',
+          value: 'shopify_thank_you_page'
+        }
+      ]
+    };
+
+    // 3. Atualizar pedido
+    console.log(`🔄 [WooCommerce] Atualizando pedido #${wooOrder.id} com dados do cliente...`);
+
+    const updateResponse = await wooApi.put(`orders/${wooOrder.id}`, updateData);
+
+    console.log(`✅ [WooCommerce] Pedido #${wooOrder.id} atualizado com sucesso`);
+
+    return {
+      success: true,
+      woo_order_id: wooOrder.id,
+      updated_fields: ['billing_address', 'shipping_address', 'customer_name', 'customer_email', 'customer_phone']
+    };
+
+  } catch (error: any) {
+    console.error('❌ [WooCommerce] Erro ao atualizar pedido:', error);
+
+    if (error.response?.data) {
+      console.error('   Detalhes:', JSON.stringify(error.response.data, null, 2));
+    }
+
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message || 'Unknown error'
+    };
+  }
+}

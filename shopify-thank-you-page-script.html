@@ -1,0 +1,155 @@
+<!--
+  SCRIPT PARA ADICIONAR NA THANK YOU PAGE DA SHOPIFY
+
+  Como adicionar:
+  1. Shopify Admin → Settings → Checkout
+  2. Scroll até "Order status page" ou "Additional scripts"
+  3. Cole este código no campo "Additional scripts"
+  4. Salve
+-->
+
+<script>
+(function() {
+  // Verificar se estamos na página de obrigado e se tem dados do checkout
+  if (!Shopify || !Shopify.checkout) {
+    console.warn('❌ Shopify.checkout não disponível');
+    return;
+  }
+
+  const checkout = Shopify.checkout;
+
+  console.log('🎉 Thank You Page - Dados capturados:', {
+    order_id: checkout.order_id,
+    order_number: checkout.order_number,
+    customer: checkout.customer,
+    billing_address: checkout.billing_address,
+    shipping_address: checkout.shipping_address,
+    email: checkout.email,
+    phone: checkout.phone
+  });
+
+  // Extrair dados do cliente
+  const customerData = {
+    // Dados do pedido
+    shopify_order_id: checkout.order_id,
+    order_number: checkout.order_number,
+
+    // Dados do cliente
+    customer_name: checkout.billing_address?.name ||
+                   checkout.shipping_address?.name ||
+                   (checkout.billing_address?.first_name + ' ' + checkout.billing_address?.last_name) ||
+                   'Cliente Shopify',
+
+    customer_first_name: checkout.billing_address?.first_name ||
+                         checkout.shipping_address?.first_name ||
+                         checkout.customer?.first_name || '',
+
+    customer_last_name: checkout.billing_address?.last_name ||
+                        checkout.shipping_address?.last_name ||
+                        checkout.customer?.last_name || '',
+
+    customer_email: checkout.email ||
+                    checkout.customer?.email ||
+                    checkout.billing_address?.email || '',
+
+    customer_phone: checkout.phone ||
+                    checkout.billing_address?.phone ||
+                    checkout.shipping_address?.phone || '',
+
+    // Endereço de cobrança COMPLETO
+    billing_address: {
+      first_name: checkout.billing_address?.first_name || '',
+      last_name: checkout.billing_address?.last_name || '',
+      name: checkout.billing_address?.name || '',
+      address1: checkout.billing_address?.address1 || '',
+      address2: checkout.billing_address?.address2 || '',
+      city: checkout.billing_address?.city || '',
+      province: checkout.billing_address?.province || '',
+      province_code: checkout.billing_address?.province_code || '',
+      country: checkout.billing_address?.country || '',
+      country_code: checkout.billing_address?.country_code || '',
+      zip: checkout.billing_address?.zip || '',
+      phone: checkout.billing_address?.phone || ''
+    },
+
+    // Endereço de envio COMPLETO
+    shipping_address: {
+      first_name: checkout.shipping_address?.first_name || '',
+      last_name: checkout.shipping_address?.last_name || '',
+      name: checkout.shipping_address?.name || '',
+      address1: checkout.shipping_address?.address1 || '',
+      address2: checkout.shipping_address?.address2 || '',
+      city: checkout.shipping_address?.city || '',
+      province: checkout.shipping_address?.province || '',
+      province_code: checkout.shipping_address?.province_code || '',
+      country: checkout.shipping_address?.country || '',
+      country_code: checkout.shipping_address?.country_code || '',
+      zip: checkout.shipping_address?.zip || '',
+      phone: checkout.shipping_address?.phone || ''
+    },
+
+    // Timestamp
+    captured_at: new Date().toISOString()
+  };
+
+  console.log('📦 Dados do cliente extraídos:', customerData);
+
+  // Enviar para nosso webhook de atualização
+  fetch('https://seu-dominio.vercel.app/api/update-customer-data', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // Token de segurança (adicionar no .env)
+      'X-Shopify-Thank-You-Token': 'SEU_TOKEN_SECRETO_AQUI'
+    },
+    body: JSON.stringify(customerData)
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('✅ Dados do cliente enviados com sucesso:', data);
+  })
+  .catch(error => {
+    console.error('❌ Erro ao enviar dados do cliente:', error);
+
+    // Fallback: tentar novamente em 2 segundos
+    setTimeout(() => {
+      fetch('https://seu-dominio.vercel.app/api/update-customer-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Thank-You-Token': 'SEU_TOKEN_SECRETO_AQUI'
+        },
+        body: JSON.stringify(customerData)
+      })
+      .then(() => console.log('✅ Retry bem-sucedido'))
+      .catch(() => console.error('❌ Retry falhou'));
+    }, 2000);
+  });
+
+})();
+</script>
+
+<!--
+  OBSERVAÇÕES IMPORTANTES:
+
+  1. Este script roda DEPOIS que o pagamento foi aprovado
+  2. Shopify.checkout contém TODOS os dados do pedido
+  3. Dados disponíveis incluem:
+     - Nome completo do cliente
+     - Email
+     - Telefone
+     - Endereço completo (billing e shipping)
+     - Dados do pedido (ID, número, produtos)
+
+  4. O script envia os dados para um novo endpoint que vamos criar:
+     /api/update-customer-data
+
+  5. Esse endpoint vai:
+     - Buscar o pedido no WooCommerce pelo shopify_order_id
+     - Atualizar com os dados completos do cliente
+     - Retornar sucesso
+
+  6. IMPORTANTE: Substituir:
+     - 'https://seu-dominio.vercel.app' pelo seu domínio real
+     - 'SEU_TOKEN_SECRETO_AQUI' por um token de segurança
+-->
