@@ -60,9 +60,16 @@ interface ShopifyOrder {
     variant_id: number;
     title: string;
     quantity: number;
-    price: string;
+    price: string;  // Preço unitário SEM desconto
     sku: string;
+    total_discount: string;  // Desconto total aplicado a este item
+    discount_allocations?: Array<{
+      amount: string;
+      discount_application_index: number;
+    }>;
   }>;
+  total_discounts: string;  // Desconto total do pedido
+  subtotal_price: string;   // Subtotal (sem shipping/taxas)
   customer: {
     id: number;
     email: string;
@@ -105,7 +112,8 @@ async function fetchShopifyCustomer(customerId: number): Promise<ShopifyCustomer
   try {
     console.log(`👤 Buscando cliente Shopify ID: ${customerId}`);
 
-    const url = `${SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/customers/${customerId}.json`;
+    // ✅ Adicionar fields parameter para garantir que TODOS os campos sejam retornados
+    const url = `${SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/customers/${customerId}.json?fields=id,email,first_name,last_name,phone,default_address`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -121,7 +129,11 @@ async function fetchShopifyCustomer(customerId: number): Promise<ShopifyCustomer
     }
 
     const data: ShopifyCustomerResponse = await response.json();
-    console.log(`✅ Cliente encontrado: ${data.customer.first_name} ${data.customer.last_name} (${data.customer.email})`);
+
+    // Log detalhado para debug
+    console.log(`📊 Customer raw data:`, JSON.stringify(data.customer, null, 2));
+    console.log(`✅ Cliente: ${data.customer.first_name || 'N/A'} ${data.customer.last_name || 'N/A'} (${data.customer.email || 'N/A'})`);
+
     return data.customer;
 
   } catch (error) {
@@ -236,10 +248,18 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
         continue;
       }
 
+      // Calcular total COM desconto aplicado
+      const itemSubtotal = parseFloat(item.price) * item.quantity;
+      const itemDiscount = parseFloat(item.total_discount || '0');
+      const itemTotal = itemSubtotal - itemDiscount;
+
+      console.log(`   💰 Item: ${item.title} - Subtotal: ${itemSubtotal}, Desconto: ${itemDiscount}, Total: ${itemTotal}`);
+
       lineItems.push({
         product_id: mapping.woo_product_id,
         quantity: item.quantity,
-        total: (parseFloat(item.price) * item.quantity).toFixed(2)
+        subtotal: itemSubtotal.toFixed(2),  // Preço sem desconto
+        total: itemTotal.toFixed(2)         // Preço COM desconto
       });
     }
 
@@ -248,70 +268,84 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
       return { success: false, error: 'No mapped products' };
     }
 
-    // 3. 🎯 BUSCAR DADOS REAIS DO CLIENTE NA SHOPIFY
+    // 3. 🎯 BUSCAR DADOS DO CLIENTE
+    // PRIORIDADE (do melhor pro pior):
+    // 1º note_attributes (dados BR estruturados)
+    // 2º order.billing_address/email (dados do pedido)
+    // 3º customerData Shopify (pode estar vazio!)
+    // 4º fallbacks genéricos
+
     let customerData: ShopifyCustomer | null = null;
 
     if (order.customer?.id) {
       console.log(`👤 Pedido tem customer_id: ${order.customer.id}, buscando dados completos...`);
       customerData = await fetchShopifyCustomer(order.customer.id);
+
+      // Verificar se customer tem dados reais
+      if (!customerData?.email && !customerData?.first_name) {
+        console.warn(`⚠️ Customer ${order.customer.id} existe mas está VAZIO, usando dados do pedido`);
+      }
     } else {
       console.warn(`⚠️ Pedido #${order.order_number} não tem customer_id`);
     }
 
-    // Usar dados REAIS do customer (se encontrado) ou fallbacks
-    const firstName = customerData?.first_name ||
-                      getNoteAttribute(order.note_attributes, 'billing_first_name') ||
-                      order.customer?.first_name ||
+    // PRIORIDADE CORRETA: note_attributes > order data > customer > fallback
+    const firstName = getNoteAttribute(order.note_attributes, 'billing_first_name') ||
                       order.billing_address?.first_name ||
+                      customerData?.first_name ||
+                      order.customer?.first_name ||
                       'Cliente';
 
-    const lastName = customerData?.last_name ||
-                     getNoteAttribute(order.note_attributes, 'billing_last_name') ||
-                     order.customer?.last_name ||
+    const lastName = getNoteAttribute(order.note_attributes, 'billing_last_name') ||
                      order.billing_address?.last_name ||
+                     customerData?.last_name ||
+                     order.customer?.last_name ||
                      'Shopify';
 
-    const email = customerData?.email ||
+    const email = order.email ||  // Email DO PEDIDO é prioridade!
+                  getNoteAttribute(order.note_attributes, 'billing_email') ||
+                  customerData?.email ||
                   order.customer?.email ||
-                  order.email ||
                   `pedido-${order.order_number}@shopify.snkhouse.com`;
 
-    const phone = customerData?.phone ||
-                  customerData?.default_address?.phone ||
-                  getNoteAttribute(order.note_attributes, 'billing_phone') ||
+    const phone = getNoteAttribute(order.note_attributes, 'billing_phone') ||
                   order.billing_address?.phone ||
+                  order.shipping_address?.phone ||
+                  customerData?.phone ||
+                  customerData?.default_address?.phone ||
                   '0000000000';
 
     // 4. Construir endereços (priorizar customer.default_address)
     const streetName = getNoteAttribute(order.note_attributes, 'billing_street_name');
     const streetNumber = getNoteAttribute(order.note_attributes, 'billing_street_number');
 
+    // PRIORIDADE: note_attributes > order.billing_address > customer > fallback
     const billingAddress = {
       first_name: firstName,
       last_name: lastName,
       company: '',
-      address_1: customerData?.default_address?.address1 ||
-                 (streetName && streetNumber ? `${streetName}, ${streetNumber}` : null) ||
+      address_1: (streetName && streetNumber ? `${streetName}, ${streetNumber}` : null) ||
                  order.billing_address?.address1 ||
+                 customerData?.default_address?.address1 ||
                  'Endereço não informado',
-      address_2: customerData?.default_address?.address2 ||
-                 getNoteAttribute(order.note_attributes, 'billing_street_complement') ||
+      address_2: getNoteAttribute(order.note_attributes, 'billing_street_complement') ||
                  order.billing_address?.address2 ||
+                 customerData?.default_address?.address2 ||
                  '',
-      city: customerData?.default_address?.city ||
-            getNoteAttribute(order.note_attributes, 'billing_city') ||
+      city: getNoteAttribute(order.note_attributes, 'billing_city') ||
             order.billing_address?.city ||
+            customerData?.default_address?.city ||
             'Cidade não informada',
-      state: customerData?.default_address?.province_code ||
-             getNoteAttribute(order.note_attributes, 'billing_state') ||
+      state: getNoteAttribute(order.note_attributes, 'billing_state') ||
              order.billing_address?.province_code ||
+             customerData?.default_address?.province_code ||
              'SP',
-      postcode: customerData?.default_address?.zip ||
-                getNoteAttribute(order.note_attributes, 'billing_postcode') ||
+      postcode: getNoteAttribute(order.note_attributes, 'billing_postcode') ||
                 order.billing_address?.zip ||
+                customerData?.default_address?.zip ||
                 '00000-000',
-      country: customerData?.default_address?.country_code ||
-               order.billing_address?.country_code ||
+      country: order.billing_address?.country_code ||
+               customerData?.default_address?.country_code ||
                'BR',
       email: email,
       phone: phone
