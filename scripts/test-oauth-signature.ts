@@ -115,13 +115,31 @@ async function testPost() {
     const responseText = await response.text();
 
     if (response.ok) {
-      const order = JSON.parse(responseText);
-      console.log('✅ PEDIDO CRIADO COM SUCESSO!');
-      console.log(`   ID: ${order.id}`);
-      console.log(`   Status: ${order.status}`);
-      console.log(`   Total: R$ ${order.total}`);
+      console.log('📋 Resposta WooCommerce (raw text):');
+      console.log(responseText);
       console.log('');
-      console.log('🎉 OAuth está funcionando corretamente!');
+
+      const order = JSON.parse(responseText);
+      console.log('📋 Resposta WooCommerce (parsed):');
+      console.log(JSON.stringify(order, null, 2));
+      console.log('');
+
+      if (Array.isArray(order)) {
+        console.log('⚠️  WooCommerce retornou ARRAY (não objeto)!');
+        console.log(`   Length: ${order.length}`);
+        if (order.length > 0) {
+          console.log(`   Primeiro item:`, JSON.stringify(order[0], null, 2));
+        }
+      } else if (order && order.id) {
+        console.log('✅ PEDIDO CRIADO COM SUCESSO!');
+        console.log(`   ID: ${order.id}`);
+        console.log(`   Status: ${order.status}`);
+        console.log(`   Total: R$ ${order.total}`);
+        console.log('');
+        console.log('🎉 OAuth está funcionando corretamente!');
+      } else {
+        console.log('⚠️  Resposta inesperada (não é array nem objeto válido)');
+      }
     } else {
       console.log('❌ Erro no POST:');
       console.log(responseText);

@@ -37,11 +37,43 @@ async function inspectOrder(orderId: string) {
   console.log('\n👤 CUSTOMER:');
   console.log(JSON.stringify(order.customer, null, 2));
 
-  console.log('\n📍 BILLING ADDRESS:');
-  console.log(JSON.stringify(order.billing_address, null, 2));
+  console.log('\n📍 BILLING ADDRESS (COMPLETO):');
+  if (order.billing_address) {
+    console.log('   Name:', order.billing_address.name);
+    console.log('   First Name:', order.billing_address.first_name);
+    console.log('   Last Name:', order.billing_address.last_name);
+    console.log('   Company:', order.billing_address.company);
+    console.log('   Address1:', order.billing_address.address1);
+    console.log('   Address2:', order.billing_address.address2);
+    console.log('   City:', order.billing_address.city);
+    console.log('   Province:', order.billing_address.province);
+    console.log('   Zip:', order.billing_address.zip);
+    console.log('   Country:', order.billing_address.country);
+    console.log('   Phone:', order.billing_address.phone);
+    console.log('   Email:', order.billing_address.email);
+    console.log('   JSON completo:', JSON.stringify(order.billing_address, null, 2));
+  } else {
+    console.log('   (vazio)');
+  }
 
-  console.log('\n📍 SHIPPING ADDRESS:');
-  console.log(JSON.stringify(order.shipping_address, null, 2));
+  console.log('\n📍 SHIPPING ADDRESS (COMPLETO):');
+  if (order.shipping_address) {
+    console.log('   Name:', order.shipping_address.name);
+    console.log('   First Name:', order.shipping_address.first_name);
+    console.log('   Last Name:', order.shipping_address.last_name);
+    console.log('   Company:', order.shipping_address.company);
+    console.log('   Address1:', order.shipping_address.address1);
+    console.log('   Address2:', order.shipping_address.address2);
+    console.log('   City:', order.shipping_address.city);
+    console.log('   Province:', order.shipping_address.province);
+    console.log('   Zip:', order.shipping_address.zip);
+    console.log('   Country:', order.shipping_address.country);
+    console.log('   Phone:', order.shipping_address.phone);
+    console.log('   Email:', order.shipping_address.email);
+    console.log('   JSON completo:', JSON.stringify(order.shipping_address, null, 2));
+  } else {
+    console.log('   (vazio)');
+  }
 
   console.log('\n💰 VALORES:');
   console.log('   Total:', order.total_price, order.currency);

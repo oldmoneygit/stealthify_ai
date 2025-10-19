@@ -287,6 +287,22 @@ export async function POST(request: Request) {
     // 3. Parse do body
     const shopifyOrder: ShopifyOrder = JSON.parse(bodyText);
 
+    // 🐛 DEBUG: Salvar payload completo do webhook para análise
+    // (TEMPORÁRIO - para descobrir onde está o nome do cliente)
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const debugDir = path.join(process.cwd(), 'debug', 'webhooks');
+      fs.mkdirSync(debugDir, { recursive: true });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `webhook-${shopifyOrder.order_number || shopifyOrder.id}-${timestamp}.json`;
+      const filepath = path.join(debugDir, filename);
+      fs.writeFileSync(filepath, bodyText, 'utf8');
+      console.log('🐛 [Debug] Payload salvo em:', filepath);
+    } catch (debugError) {
+      console.warn('⚠️ [Debug] Não foi possível salvar payload:', debugError);
+    }
+
     console.log('📦 [Webhook] Pedido Shopify recebido:', {
       shopify_order_id: shopifyOrder.id,
       order_number: shopifyOrder.order_number,
