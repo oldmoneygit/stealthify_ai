@@ -194,15 +194,21 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
     // 3. Extrair dados do cliente de note_attributes
     const firstName = getNoteAttribute(order.note_attributes, 'billing_first_name') ||
                       order.customer?.first_name ||
-                      order.billing_address?.first_name || '';
+                      order.billing_address?.first_name ||
+                      'Cliente';  // Fallback se vazio
 
     const lastName = getNoteAttribute(order.note_attributes, 'billing_last_name') ||
                      order.customer?.last_name ||
-                     order.billing_address?.last_name || '';
+                     order.billing_address?.last_name ||
+                     'Shopify';  // Fallback se vazio
 
-    const email = order.customer?.email || order.email || '';
+    const email = order.customer?.email ||
+                  order.email ||
+                  `pedido-${order.order_number}@shopify.snkhouse.com`;  // ✅ Email padrão (WooCommerce exige)
+
     const phone = getNoteAttribute(order.note_attributes, 'billing_phone') ||
-                  order.billing_address?.phone || '';
+                  order.billing_address?.phone ||
+                  '0000000000';  // Fallback se vazio
 
     // 4. Construir endereços
     const streetName = getNoteAttribute(order.note_attributes, 'billing_street_name');
@@ -212,11 +218,11 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
       first_name: firstName,
       last_name: lastName,
       company: '',
-      address_1: streetName && streetNumber ? `${streetName}, ${streetNumber}` : (order.billing_address?.address1 || ''),
+      address_1: streetName && streetNumber ? `${streetName}, ${streetNumber}` : (order.billing_address?.address1 || 'Endereço não informado'),
       address_2: getNoteAttribute(order.note_attributes, 'billing_street_complement') || (order.billing_address?.address2 || ''),
-      city: getNoteAttribute(order.note_attributes, 'billing_city') || (order.billing_address?.city || ''),
-      state: getNoteAttribute(order.note_attributes, 'billing_state') || (order.billing_address?.province_code || ''),
-      postcode: getNoteAttribute(order.note_attributes, 'billing_postcode') || (order.billing_address?.zip || ''),
+      city: getNoteAttribute(order.note_attributes, 'billing_city') || (order.billing_address?.city || 'Cidade não informada'),
+      state: getNoteAttribute(order.note_attributes, 'billing_state') || (order.billing_address?.province_code || 'SP'),
+      postcode: getNoteAttribute(order.note_attributes, 'billing_postcode') || (order.billing_address?.zip || '00000-000'),
       country: order.billing_address?.country_code || 'BR',
       email: email,
       phone: phone
