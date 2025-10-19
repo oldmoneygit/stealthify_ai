@@ -288,8 +288,8 @@ export async function POST(request: Request) {
 
       lineItems.push({
         product_id: wooProduct.woo_product_id,
-        quantity: item.quantity,
-        total: (parseFloat(item.price) * item.quantity).toFixed(2)
+        quantity: item.quantity
+        // Note: 'total' is calculated automatically by WooCommerce based on product price
       });
     }
 
