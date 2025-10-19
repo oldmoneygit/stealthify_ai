@@ -16,49 +16,41 @@ import { findShopifyOrderByAppmaxId } from '@/services/shopify.service';
 
 interface AppmaxCustomer {
   id: number;
-  name: string;
+  firstname: string;
+  lastname: string;
+  fullname: string;
   email: string;
-  phone: string;
-  document?: string; // CPF/CNPJ
-  [key: string]: any;
-}
-
-interface AppmaxAddress {
-  street: string;
-  number: string;
-  complement?: string;
-  neighborhood: string;
-  city: string;
-  state: string;
-  zipcode: string;
-  country?: string;
+  telephone: string;
+  postcode: string;
+  address_street: string;
+  address_street_number: string;
+  address_street_complement: string;
+  address_street_district: string;
+  address_city: string;
+  address_state: string;
+  document_number?: string; // CPF/CNPJ
+  uf?: string;
   [key: string]: any;
 }
 
 interface AppmaxOrder {
   id: number;
   status: string;
-  total: number;
+  total: number | string;
   customer: AppmaxCustomer;
-  billing_address?: AppmaxAddress;
-  shipping_address?: AppmaxAddress;
-  payment_method?: string;
+  payment_type?: string;
   created_at?: string;
+  paid_at?: string;
   // Campos que podem conter o ID do pedido Shopify
   external_id?: string;
   order_id?: string;
-  meta?: {
-    shopify_order_id?: string;
-    shopify_order_number?: string;
-    [key: string]: any;
-  };
   [key: string]: any;
 }
 
 interface AppmaxWebhookPayload {
+  environment: string;
   event: string;
-  order?: AppmaxOrder;
-  customer?: AppmaxCustomer;
+  data: AppmaxOrder;
   [key: string]: any;
 }
 
@@ -72,8 +64,9 @@ export async function POST(request: Request) {
     console.log('📦 [Appmax Webhook] Evento:', payload.event);
     console.log('📦 [Appmax Webhook] Payload completo:', JSON.stringify(payload, null, 2));
 
-    // 2. Verificar se é evento de pedido aprovado
-    if (payload.event !== 'OrderApproved' && payload.event !== 'order_approved') {
+    // 2. Verificar se é evento válido
+    const validEvents = ['OrderApproved', 'order_approved', 'OrderPaid', 'order_paid'];
+    if (!validEvents.includes(payload.event)) {
       console.log(`ℹ️ [Appmax Webhook] Evento ignorado: ${payload.event}`);
       return NextResponse.json({
         success: true,
@@ -82,7 +75,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Validar se tem dados do pedido
-    if (!payload.order) {
+    if (!payload.data) {
       console.error('❌ [Appmax Webhook] Payload sem dados do pedido');
       return NextResponse.json({
         success: false,
@@ -90,12 +83,12 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    const order = payload.order;
+    const order = payload.data;
 
     console.log('👤 [Appmax Webhook] Cliente:', {
-      name: order.customer?.name,
+      name: order.customer?.fullname || `${order.customer?.firstname} ${order.customer?.lastname}`,
       email: order.customer?.email,
-      phone: order.customer?.phone
+      phone: order.customer?.telephone
     });
 
     // 4. CRÍTICO: Encontrar o ID do pedido Shopify
@@ -148,47 +141,52 @@ export async function POST(request: Request) {
     console.log(`🔗 [Appmax Webhook] Shopify Order ID encontrado: ${shopifyOrderId}`);
 
     // 5. Preparar dados do cliente
-    const billingAddress = order.billing_address || order.shipping_address;
-    const shippingAddress = order.shipping_address || order.billing_address;
+    const customer = order.customer;
 
-    if (!billingAddress || !shippingAddress) {
-      console.error('❌ [Appmax Webhook] Endereço não encontrado no payload');
+    if (!customer) {
+      console.error('❌ [Appmax Webhook] Dados do cliente não encontrados');
       return NextResponse.json({
         success: false,
-        error: 'Missing address data'
+        error: 'Missing customer data'
       }, { status: 400 });
     }
 
-    // Dividir nome completo em first_name e last_name
-    const nameParts = (order.customer?.name || '').trim().split(' ');
-    const firstName = nameParts[0] || 'Cliente';
-    const lastName = nameParts.slice(1).join(' ') || 'Appmax';
+    // Nome do cliente
+    const firstName = customer.firstname || 'Cliente';
+    const lastName = customer.lastname || 'Appmax';
+
+    // Endereço completo
+    const address1 = `${customer.address_street || ''}, ${customer.address_street_number || ''}`.trim();
+    const address2 = [
+      customer.address_street_complement,
+      customer.address_street_district
+    ].filter(Boolean).join(' - ');
 
     const customerData = {
       first_name: firstName,
       last_name: lastName,
-      email: order.customer?.email || 'sem-email@appmax.com',
-      phone: order.customer?.phone || '',
+      email: customer.email || 'sem-email@appmax.com',
+      phone: customer.telephone || '',
       billing_address: {
         first_name: firstName,
         last_name: lastName,
-        address1: `${billingAddress.street}, ${billingAddress.number}`,
-        address2: billingAddress.complement || billingAddress.neighborhood || '',
-        city: billingAddress.city,
-        state: billingAddress.state,
-        postcode: billingAddress.zipcode.replace(/\D/g, ''), // Remover formatação
-        country: billingAddress.country || 'BR',
-        phone: order.customer?.phone || ''
+        address1: address1 || '',
+        address2: address2 || '',
+        city: customer.address_city || '',
+        state: customer.address_state || customer.uf || '',
+        postcode: (customer.postcode || '').replace(/\D/g, ''), // Remover formatação
+        country: 'BR',
+        phone: customer.telephone || ''
       },
       shipping_address: {
         first_name: firstName,
         last_name: lastName,
-        address1: `${shippingAddress.street}, ${shippingAddress.number}`,
-        address2: shippingAddress.complement || shippingAddress.neighborhood || '',
-        city: shippingAddress.city,
-        state: shippingAddress.state,
-        postcode: shippingAddress.zipcode.replace(/\D/g, ''),
-        country: shippingAddress.country || 'BR'
+        address1: address1 || '',
+        address2: address2 || '',
+        city: customer.address_city || '',
+        state: customer.address_state || customer.uf || '',
+        postcode: (customer.postcode || '').replace(/\D/g, ''),
+        country: 'BR'
       }
     };
 
