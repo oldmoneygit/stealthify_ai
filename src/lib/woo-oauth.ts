@@ -58,7 +58,7 @@ function createSignatureBaseString(
 }
 
 /**
- * Gera assinatura HMAC-SHA256
+ * Gera assinatura HMAC-SHA1 (WooCommerce padrão)
  */
 function generateSignature(
   baseString: string,
@@ -68,7 +68,7 @@ function generateSignature(
   const key = `${encodeURIComponent(consumerSecret)}&`;
 
   const signature = crypto
-    .createHmac('sha256', key)
+    .createHmac('sha1', key)
     .update(baseString)
     .digest('base64');
 
@@ -87,13 +87,12 @@ export function createWooCommerceAuthUrl(
   const timestamp = generateTimestamp();
   const nonce = generateNonce();
 
-  // Parametros OAuth
+  // Parametros OAuth (oauth_version NÃO é necessário no WooCommerce!)
   const oauthParams: Record<string, string> = {
     oauth_consumer_key: consumerKey,
     oauth_timestamp: timestamp,
     oauth_nonce: nonce,
-    oauth_signature_method: 'HMAC-SHA256',
-    oauth_version: '1.0'
+    oauth_signature_method: 'HMAC-SHA1'  // WooCommerce aceita HMAC-SHA1 ou HMAC-SHA256
   };
 
   // Criar base string e assinatura
