@@ -16,6 +16,11 @@ import { createWooCommerceOrder, checkIfOrderExists, updateOrderStatus } from '@
  * - orders/updated: Atualiza status do pedido no WooCommerce
  */
 
+// ⚠️ CRITICAL: Disable automatic body parsing for HMAC verification
+// Next.js automatically parses JSON bodies, which corrupts the raw bytes needed for HMAC
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 interface ShopifyLineItem {
   id: number;
   variant_id: number;
@@ -114,6 +119,7 @@ function verifyWebhookSignature(
     return false;
   }
 
+  // Calculate HMAC using raw body bytes
   const hash = crypto
     .createHmac('sha256', secret)
     .update(body, 'utf8')
@@ -122,7 +128,13 @@ function verifyWebhookSignature(
   const isValid = hash === hmacHeader;
 
   if (!isValid) {
-    console.error('❌ [Webhook] Invalid HMAC signature');
+    console.error('❌ [Webhook] HMAC verification failed');
+    console.error('   Expected (Shopify):', hmacHeader);
+    console.error('   Calculated (Server):', hash);
+    console.error('   Secret length:', secret.length);
+    console.error('   Body length:', body.length);
+  } else {
+    console.log('✅ [Webhook] HMAC verification successful');
   }
 
   return isValid;
