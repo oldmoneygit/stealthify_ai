@@ -24,6 +24,19 @@ interface CartItem {
   quantity: number;
 }
 
+interface TrackingParams {
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+  utm_id?: string;
+  fbclid?: string;
+  gclid?: string;
+  msclkid?: string;
+  ttclid?: string;
+}
+
 interface ShopifyProduct {
   shopify_product_id: string;
   shopify_variant_id: string;
@@ -46,9 +59,16 @@ export async function OPTIONS() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { items } = body as { items: CartItem[] };
+    const { items, tracking_params } = body as { items: CartItem[], tracking_params?: TrackingParams };
 
-    console.log('🔄 [WooCommerce → Shopify] Iniciando redirecionamento:', { items });
+    console.log('🔄 [WooCommerce → Shopify] Iniciando redirecionamento:', {
+      items,
+      has_tracking: !!tracking_params
+    });
+
+    if (tracking_params) {
+      console.log('🎯 [Tracking] UTMs recebidas:', tracking_params);
+    }
 
     if (!items || items.length === 0) {
       return NextResponse.json({
@@ -120,8 +140,8 @@ export async function POST(request: Request) {
     // Buscar desconto ativo (não bloqueia se falhar)
     const discountCode = await getActiveDiscountCode().catch(() => null);
 
-    // Criar checkout na Shopify
-    const checkoutUrl = await createShopifyCheckout(items, skuMap, discountCode);
+    // Criar checkout na Shopify (com UTMs)
+    const checkoutUrl = await createShopifyCheckout(items, skuMap, discountCode, tracking_params);
 
     console.log('✅ [Checkout] URL criada:', checkoutUrl);
 
@@ -146,12 +166,14 @@ export async function POST(request: Request) {
  * @param items - Itens do carrinho
  * @param skuMap - Mapa de SKUs para produtos Shopify
  * @param discountCode - Código de desconto (opcional)
- * @returns URL do carrinho com desconto aplicado
+ * @param trackingParams - Parâmetros de tracking (UTMs, fbclid, etc)
+ * @returns URL do carrinho com desconto e UTMs aplicados
  */
 async function createShopifyCheckout(
   items: CartItem[],
   skuMap: Map<string, ShopifyProduct>,
-  discountCode: string | null = null
+  discountCode: string | null = null,
+  trackingParams?: TrackingParams
 ): Promise<string> {
   const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL!;
 
@@ -167,10 +189,47 @@ async function createShopifyCheckout(
   // Formato: https://loja.myshopify.com/cart/VARIANT_ID:QUANTITY,VARIANT_ID:QUANTITY
   let cartUrl = `${SHOPIFY_STORE_URL}/cart/${cartItems.join(',')}`;
 
+  // Preparar query parameters
+  const queryParams: Record<string, string> = {};
+
   // Adicionar código de desconto se disponível
   if (discountCode) {
-    cartUrl += `?discount=${encodeURIComponent(discountCode)}`;
+    queryParams['discount'] = discountCode;
     console.log(`🎟️ [Checkout] Desconto aplicado: ${discountCode}`);
+  }
+
+  // Adicionar parâmetros de tracking (UTMs, fbclid, etc)
+  if (trackingParams) {
+    const trackingKeys = [
+      'utm_source',
+      'utm_medium',
+      'utm_campaign',
+      'utm_term',
+      'utm_content',
+      'utm_id',
+      'fbclid',
+      'gclid',
+      'msclkid',
+      'ttclid'
+    ];
+
+    trackingKeys.forEach(key => {
+      const value = trackingParams[key as keyof TrackingParams];
+      if (value) {
+        queryParams[key] = value;
+      }
+    });
+
+    const utmCount = Object.keys(queryParams).filter(k => k.startsWith('utm_')).length;
+    if (utmCount > 0) {
+      console.log(`🎯 [Tracking] ${utmCount} parâmetros UTM adicionados à URL`);
+    }
+  }
+
+  // Adicionar query parameters à URL
+  if (Object.keys(queryParams).length > 0) {
+    const queryString = new URLSearchParams(queryParams).toString();
+    cartUrl += `?${queryString}`;
   }
 
   console.log('🛒 [Checkout] Cart URL criada:', cartUrl);
