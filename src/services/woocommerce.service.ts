@@ -251,16 +251,36 @@ export async function createWooCommerceOrder(
 
     console.log('📤 [WooCommerce] Payload enviado:', JSON.stringify(orderData, null, 2));
 
+    // Log full request details
+    console.log('🔧 [WooCommerce] Request details:', {
+      url: `${process.env.WOOCOMMERCE_URL}/wp-json/wc/v3/orders`,
+      method: 'POST',
+      consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY?.substring(0, 10) + '...',
+      hasSecret: !!process.env.WOOCOMMERCE_CONSUMER_SECRET
+    });
+
     const response = await wooApi.post("orders", orderData);
 
     console.log('📥 [WooCommerce] Status da resposta:', response.status);
+    console.log('📥 [WooCommerce] Status text:', response.statusText);
     console.log('📥 [WooCommerce] Tipo da resposta:', Array.isArray(response.data) ? 'Array' : 'Object');
+    console.log('📥 [WooCommerce] Tamanho da resposta:', Array.isArray(response.data) ? response.data.length : 'N/A');
+    console.log('📥 [WooCommerce] Resposta completa:', JSON.stringify(response.data, null, 2));
 
     // Handle both single object and array responses
     let orderCreated: any;
 
     if (Array.isArray(response.data)) {
-      // If array, get the first item (newest order)
+      if (response.data.length === 0) {
+        console.error('❌ [WooCommerce] API retornou ARRAY VAZIO!');
+        console.error('   Isso significa que a requisição foi aceita mas nenhum pedido foi criado');
+        console.error('   Possíveis causas:');
+        console.error('   1. Plugin de segurança bloqueando criação de pedidos via API');
+        console.error('   2. Webhook ou hook do WooCommerce interceptando a criação');
+        console.error('   3. Credenciais sem permissão write para pedidos');
+        throw new Error('WooCommerce API retornou array vazio - pedido não foi criado');
+      }
+
       console.warn('⚠️ [WooCommerce] API retornou array, pegando primeiro item');
       orderCreated = response.data[0];
     } else {
@@ -270,7 +290,7 @@ export async function createWooCommerceOrder(
 
     // Validate that we got a valid order object
     if (!orderCreated || !orderCreated.id) {
-      console.error('❌ [WooCommerce] Resposta da API inválida:', response.data);
+      console.error('❌ [WooCommerce] Resposta da API inválida:', JSON.stringify(response.data, null, 2));
       throw new Error('WooCommerce API retornou resposta inválida (sem ID)');
     }
 
