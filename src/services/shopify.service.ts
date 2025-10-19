@@ -487,3 +487,86 @@ export async function getActiveDiscountCode(): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Busca um pedido na Shopify pelo appmax_order_id nos note_attributes
+ *
+ * @param appmaxOrderId - ID do pedido no Appmax
+ * @returns Shopify Order ID ou null se não encontrado
+ */
+export async function findShopifyOrderByAppmaxId(appmaxOrderId: string | number): Promise<string | null> {
+  try {
+    console.log(`🔍 [Shopify] Buscando pedido com appmax_order_id: ${appmaxOrderId}`);
+
+    // Buscar pedidos recentes (últimos 250 pedidos - suficiente para encontrar)
+    const response = await fetch(
+      `${process.env.SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/orders.json?limit=250&status=any`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN!,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`❌ [Shopify] Erro ao buscar pedidos: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const orders = data.orders || [];
+
+    console.log(`📦 [Shopify] Buscando em ${orders.length} pedidos...`);
+
+    // Procurar pedido com appmax_order_id nos note_attributes
+    for (const order of orders) {
+      if (!order.note_attributes) continue;
+
+      const appmaxAttr = order.note_attributes.find(
+        (attr: any) => attr.name === 'appmax_order_id' && attr.value == appmaxOrderId
+      );
+
+      if (appmaxAttr) {
+        console.log(`✅ [Shopify] Pedido encontrado: Shopify #${order.id} ↔ Appmax #${appmaxOrderId}`);
+        return order.id.toString();
+      }
+    }
+
+    console.warn(`⚠️ [Shopify] Pedido não encontrado com appmax_order_id: ${appmaxOrderId}`);
+    return null;
+
+  } catch (error) {
+    console.error('❌ [Shopify] Erro ao buscar pedido:', error);
+    return null;
+  }
+}
+
+/**
+ * Busca dados completos de um pedido na Shopify
+ */
+export async function getShopifyOrder(orderId: string): Promise<any> {
+  try {
+    const response = await fetch(
+      `${process.env.SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/orders/${orderId}.json`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN!,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`❌ [Shopify] Erro ao buscar pedido: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.order;
+
+  } catch (error) {
+    console.error('❌ [Shopify] Erro ao buscar pedido:', error);
+    return null;
+  }
+}
