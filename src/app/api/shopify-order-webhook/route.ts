@@ -362,6 +362,10 @@ export async function POST(request: Request) {
           value: shopifyOrder.order_number.toString()
         },
         {
+          key: 'Pedido Shopify',  // Campo VISÍVEL no admin
+          value: `#${shopifyOrder.order_number} (ID: ${shopifyOrder.id})`
+        },
+        {
           key: '_synced_from_shopify',
           value: 'true'
         },
