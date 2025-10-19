@@ -26,9 +26,14 @@ interface ShopifyLineItem {
   variant_id: number;
   title: string;
   quantity: number;
-  price: string;
+  price: string;  // Preço unitário SEM desconto
   sku: string;
   product_id: number;
+  total_discount: string;  // Desconto total aplicado a este item
+  discount_allocations?: Array<{
+    amount: string;
+    discount_application_index: number;
+  }>;
 }
 
 interface ShopifyCustomer {
@@ -258,6 +263,65 @@ function mapFulfillmentStatus(
 }
 
 /**
+ * Adiciona tag no pedido Shopify para evitar reprocessamento
+ */
+async function addShopifyOrderTag(orderId: number, tag: string): Promise<void> {
+  const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL!;
+  const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
+  const SHOPIFY_API_VERSION = '2024-01';
+
+  const url = `${SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/orders/${orderId}.json`;
+
+  try {
+    // Primeiro, buscar tags atuais
+    const getResponse = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!getResponse.ok) {
+      console.error('❌ [Webhook] Erro ao buscar pedido da Shopify:', orderId);
+      return;
+    }
+
+    const { order } = await getResponse.json();
+    const currentTags = order.tags ? order.tags.split(', ').filter((t: string) => t.trim()) : [];
+
+    // Adicionar nova tag se ainda não existir
+    if (!currentTags.includes(tag)) {
+      currentTags.push(tag);
+
+      const updateResponse = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          order: {
+            id: orderId,
+            tags: currentTags.join(', ')
+          }
+        })
+      });
+
+      if (!updateResponse.ok) {
+        console.error('❌ [Webhook] Erro ao adicionar tag no pedido Shopify:', orderId);
+      } else {
+        console.log(`✅ [Webhook] Tag "${tag}" adicionada ao pedido Shopify #${orderId}`);
+      }
+    } else {
+      console.log(`ℹ️ [Webhook] Tag "${tag}" já existe no pedido #${orderId}`);
+    }
+  } catch (error) {
+    console.error('❌ [Webhook] Erro ao processar tag:', error);
+  }
+}
+
+/**
  * GET /api/shopify-order-webhook/errors
  * Retorna log de erros dos webhooks
  */
@@ -389,10 +453,19 @@ export async function POST(request: Request) {
 
       console.log(`✅ [Webhook] Mapeado: ${item.title} → WooCommerce product ${wooProduct.woo_product_id}`);
 
+      // Calcular total COM desconto aplicado
+      const itemSubtotal = parseFloat(item.price) * item.quantity;
+      const itemDiscount = parseFloat(item.total_discount || '0');
+      const itemTotal = itemSubtotal - itemDiscount;
+
+      console.log(`   💰 Item: ${item.title}`);
+      console.log(`      Subtotal: ${itemSubtotal}, Desconto: ${itemDiscount}, Total: ${itemTotal}`);
+
       lineItems.push({
         product_id: wooProduct.woo_product_id,
-        quantity: item.quantity
-        // Note: 'total' is calculated automatically by WooCommerce based on product price
+        quantity: item.quantity,
+        subtotal: itemSubtotal.toFixed(2),  // Preço sem desconto
+        total: itemTotal.toFixed(2)         // Preço COM desconto
       });
     }
 
@@ -608,6 +681,9 @@ export async function POST(request: Request) {
       status: wooOrder.status,
       duration_ms: duration
     });
+
+    // 9. Adicionar tag no Shopify para evitar reprocessamento
+    await addShopifyOrderTag(shopifyOrder.id, 'woocommerce-sync');
 
     return NextResponse.json({
       success: true,
