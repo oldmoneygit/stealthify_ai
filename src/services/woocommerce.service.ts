@@ -1,6 +1,7 @@
 import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
 import { db } from "@/lib/db";
 import type { Product } from "@/lib/types";
+import { wooCommerceAuthenticatedPost } from "@/lib/woo-oauth";
 
 // Initialize WooCommerce API client
 const wooApi = new WooCommerceRestApi({
@@ -259,38 +260,21 @@ export async function createWooCommerceOrder(
       hasSecret: !!process.env.WOOCOMMERCE_CONSUMER_SECRET
     });
 
-    const response = await wooApi.post("orders", orderData);
+    // Usar implementação OAuth manual ao invés da biblioteca
+    // A biblioteca @woocommerce/woocommerce-rest-api tem bug com POST (retorna array vazio)
+    console.log('🔐 [WooCommerce] Usando implementação OAuth manual...');
 
-    console.log('📥 [WooCommerce] Status da resposta:', response.status);
-    console.log('📥 [WooCommerce] Status text:', response.statusText);
-    console.log('📥 [WooCommerce] Tipo da resposta:', Array.isArray(response.data) ? 'Array' : 'Object');
-    console.log('📥 [WooCommerce] Tamanho da resposta:', Array.isArray(response.data) ? response.data.length : 'N/A');
-    console.log('📥 [WooCommerce] Resposta completa:', JSON.stringify(response.data, null, 2));
+    const orderCreated = await wooCommerceAuthenticatedPost<WooCommerceOrder>(
+      'orders',
+      orderData,
+      process.env.WOOCOMMERCE_CONSUMER_KEY!,
+      process.env.WOOCOMMERCE_CONSUMER_SECRET!,
+      process.env.WOOCOMMERCE_URL!
+    );
 
-    // Handle both single object and array responses
-    let orderCreated: any;
-
-    if (Array.isArray(response.data)) {
-      if (response.data.length === 0) {
-        console.error('❌ [WooCommerce] API retornou ARRAY VAZIO!');
-        console.error('   Isso significa que a requisição foi aceita mas nenhum pedido foi criado');
-        console.error('   Possíveis causas:');
-        console.error('   1. Plugin de segurança bloqueando criação de pedidos via API');
-        console.error('   2. Webhook ou hook do WooCommerce interceptando a criação');
-        console.error('   3. Credenciais sem permissão write para pedidos');
-        throw new Error('WooCommerce API retornou array vazio - pedido não foi criado');
-      }
-
-      console.warn('⚠️ [WooCommerce] API retornou array, pegando primeiro item');
-      orderCreated = response.data[0];
-    } else {
-      // Normal case: single object
-      orderCreated = response.data;
-    }
-
-    // Validate that we got a valid order object
+    // Validate response
     if (!orderCreated || !orderCreated.id) {
-      console.error('❌ [WooCommerce] Resposta da API inválida:', JSON.stringify(response.data, null, 2));
+      console.error('❌ [WooCommerce] Resposta inválida:', orderCreated);
       throw new Error('WooCommerce API retornou resposta inválida (sem ID)');
     }
 
@@ -298,8 +282,7 @@ export async function createWooCommerceOrder(
       id: orderCreated.id,
       order_key: orderCreated.order_key,
       total: orderCreated.total,
-      status: orderCreated.status,
-      number: orderCreated.number
+      status: orderCreated.status
     });
 
     return orderCreated as WooCommerceOrder;
