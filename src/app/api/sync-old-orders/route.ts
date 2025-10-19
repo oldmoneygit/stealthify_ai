@@ -251,14 +251,16 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
   }
 }
 
-export async function POST(request: Request) {
+/**
+ * Main sync logic (shared between GET and POST)
+ */
+async function executeSyncLogic(authHeader: string | null) {
   const startTime = Date.now();
 
   try {
     console.log('🔄 [Sync] Iniciando sincronização de pedidos antigos...');
 
-    // Validar autenticação (opcional - pode usar um secret)
-    const authHeader = request.headers.get('authorization');
+    // Validar autenticação
     const CRON_SECRET = process.env.CRON_SECRET || 'your-secret-here';
 
     if (authHeader !== `Bearer ${CRON_SECRET}`) {
@@ -344,11 +346,18 @@ export async function POST(request: Request) {
   }
 }
 
-// Permitir chamadas GET para verificar status
-export async function GET() {
-  return NextResponse.json({
-    status: 'ok',
-    message: 'Sync old orders endpoint is active',
-    usage: 'POST with Authorization: Bearer <CRON_SECRET>'
-  });
+/**
+ * POST handler (manual calls)
+ */
+export async function POST(request: Request) {
+  const authHeader = request.headers.get('authorization');
+  return executeSyncLogic(authHeader);
+}
+
+/**
+ * GET handler (Vercel Cron calls)
+ */
+export async function GET(request: Request) {
+  const authHeader = request.headers.get('authorization');
+  return executeSyncLogic(authHeader);
 }
