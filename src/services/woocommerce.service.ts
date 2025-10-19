@@ -268,6 +268,12 @@ export async function createWooCommerceOrder(
       orderCreated = response.data;
     }
 
+    // Validate that we got a valid order object
+    if (!orderCreated || !orderCreated.id) {
+      console.error('❌ [WooCommerce] Resposta da API inválida:', response.data);
+      throw new Error('WooCommerce API retornou resposta inválida (sem ID)');
+    }
+
     console.log('✅ [WooCommerce] Pedido criado:', {
       id: orderCreated.id,
       order_key: orderCreated.order_key,
