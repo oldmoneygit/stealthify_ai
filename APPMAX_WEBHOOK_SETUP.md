@@ -46,13 +46,18 @@ https://SEU_DOMINIO.vercel.app/api/appmax-webhook
 Na seção **"Eventos"**, selecione:
 
 #### Categoria: **Pedido**
-- ✅ **Pedido aprovado** ← ESTE É O PRINCIPAL
+
+**Escolha UM dos seguintes eventos:**
+
+- ✅ **Pedido Pago** ← RECOMENDADO (dispara logo após pagamento ser confirmado)
+- OU ✅ **Pedido aprovado** ← Alternativa (dispara após análise antifraude)
 
 **Opcional (para ter mais controle):**
-- ✅ Pedido Integrado (se quiser atualizar só após todas validações)
-- ✅ Pedido Pago (se quiser atualizar logo após pagamento)
+
+- ✅ Pedido Integrado (se quiser atualizar só após todas validações - mais lento)
 
 **NÃO selecionar** (ainda):
+
 - ❌ Cliente Criado (não tem endereço completo)
 - ❌ Cliente interessado (abandono de carrinho)
 - ❌ Boleto Gerado (só gera boleto)
