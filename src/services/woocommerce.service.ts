@@ -195,20 +195,35 @@ export interface WooCommerceOrder {
  */
 export async function checkIfOrderExists(shopifyOrderId: string): Promise<WooCommerceOrder | null> {
   try {
+    console.log(`🔍 [WooCommerce] Buscando pedido com Shopify ID: ${shopifyOrderId}`);
+
+    // ⚠️ IMPORTANTE: meta_key/meta_value não funciona confiável no WooCommerce REST API
+    // Solução: buscar últimos pedidos e filtrar manualmente
     const response = await wooApi.get("orders", {
-      meta_key: '_shopify_order_id',
-      meta_value: shopifyOrderId,
-      per_page: 1
+      per_page: 100,
+      orderby: 'date',
+      order: 'desc'
     });
 
+    console.log(`📊 [WooCommerce] Buscou ${response.data?.length || 0} pedidos para filtrar`);
+
     if (response.data && response.data.length > 0) {
-      console.log(`✅ [WooCommerce] Pedido já existe com Shopify ID ${shopifyOrderId}:`, {
-        woo_order_id: response.data[0].id,
-        status: response.data[0].status
+      // Filtrar manualmente pelo meta_data
+      const matchingOrder = response.data.find((order: WooCommerceOrder) => {
+        const shopifyMeta = order.meta_data?.find(m => m.key === '_shopify_order_id');
+        return shopifyMeta && shopifyMeta.value === shopifyOrderId;
       });
-      return response.data[0];
+
+      if (matchingOrder) {
+        console.log(`✅ [WooCommerce] Pedido encontrado com Shopify ID ${shopifyOrderId}:`, {
+          woo_order_id: matchingOrder.id,
+          status: matchingOrder.status
+        });
+        return matchingOrder;
+      }
     }
 
+    console.log(`❌ [WooCommerce] Nenhum pedido encontrado com Shopify ID: ${shopifyOrderId}`);
     return null;
   } catch (error: any) {
     console.error('❌ [WooCommerce] Erro ao verificar pedido existente:', error.message);
