@@ -249,11 +249,21 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
       }
 
       // Calcular total COM desconto aplicado
+      console.log(`\n   🔍 DEBUG Item: ${item.title}`);
+      console.log(`      item.price (raw): "${item.price}" (type: ${typeof item.price})`);
+      console.log(`      item.quantity (raw): "${item.quantity}" (type: ${typeof item.quantity})`);
+      console.log(`      item.total_discount (raw): "${item.total_discount}" (type: ${typeof item.total_discount})`);
+
       const itemSubtotal = parseFloat(item.price) * item.quantity;
       const itemDiscount = parseFloat(item.total_discount || '0');
       const itemTotal = itemSubtotal - itemDiscount;
 
-      console.log(`   💰 Item: ${item.title} - Subtotal: ${itemSubtotal}, Desconto: ${itemDiscount}, Total: ${itemTotal}`);
+      console.log(`      → Subtotal calculado: ${itemSubtotal}`);
+      console.log(`      → Discount calculado: ${itemDiscount}`);
+      console.log(`      → Total calculado: ${itemTotal}`);
+      console.log(`      → Enviando ao WooCommerce:`);
+      console.log(`         subtotal: "${itemSubtotal.toFixed(2)}"`);
+      console.log(`         total: "${itemTotal.toFixed(2)}"`);
 
       lineItems.push({
         product_id: mapping.woo_product_id,
