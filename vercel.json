@@ -1,5 +1,8 @@
 {
-  "env": {
-    "SKIP_DB_INIT": "true"
-  }
+  "crons": [
+    {
+      "path": "/api/sync-old-orders",
+      "schedule": "0 * * * *"
+    }
+  ]
 }
