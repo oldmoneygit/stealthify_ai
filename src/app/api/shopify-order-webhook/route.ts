@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getProductByShopifyVariantId } from '@/lib/supabase';
 import { createWooCommerceOrder, checkIfOrderExists, updateOrderStatus } from '@/services/woocommerce.service';
+import { sendPurchaseEvent } from '@/services/facebook-capi.service';
+import { getTrackingByOrderId } from '@/app/api/save-tracking/route';
 
 /**
  * 🔄 API ROUTE: Shopify Order Webhook → WooCommerce Order Sync
@@ -264,6 +266,88 @@ function mapFulfillmentStatus(
   }
 
   return mapPaymentStatus(financialStatus);
+}
+
+/**
+ * Extrai parâmetros de tracking do pedido Shopify
+ *
+ * Busca em:
+ * 1. Cache (salvo pelo Custom Pixel via /api/save-tracking)
+ * 2. note_attributes do pedido (se Custom Pixel salvou lá)
+ *
+ * @param order - Pedido Shopify
+ * @returns Objeto com parâmetros de tracking (fbclid, utm_*, fbp, fbc)
+ */
+function extractTrackingFromOrder(order: ShopifyOrder): {
+  fbp?: string;
+  fbc?: string;
+  fbclid?: string;
+  utm_source?: string;
+  utm_campaign?: string;
+  utm_medium?: string;
+  utm_term?: string;
+  utm_content?: string;
+  landing_url?: string;
+  referrer?: string;
+} {
+  // 1. Tentar buscar do cache (salvo pelo Custom Pixel)
+  const cachedTracking = getTrackingByOrderId(order.id.toString());
+
+  if (cachedTracking) {
+    console.log('📊 [Tracking] Dados encontrados no cache:', {
+      order_id: order.id,
+      has_fbclid: !!cachedTracking.fbclid,
+      has_fbp: !!cachedTracking.fbp,
+      utm_source: cachedTracking.utm_source
+    });
+
+    return {
+      fbp: cachedTracking.fbp,
+      fbc: cachedTracking.fbc,
+      fbclid: cachedTracking.fbclid,
+      utm_source: cachedTracking.utm_source,
+      utm_campaign: cachedTracking.utm_campaign,
+      utm_medium: cachedTracking.utm_medium,
+      utm_term: cachedTracking.utm_term,
+      utm_content: cachedTracking.utm_content,
+      landing_url: cachedTracking.landing_url,
+      referrer: cachedTracking.referrer
+    };
+  }
+
+  // 2. Fallback: Tentar extrair de note_attributes
+  const attrs = order.note_attributes || [];
+
+  const tracking = {
+    fbp: getNoteAttribute(attrs, '_tracking_fbp'),
+    fbc: getNoteAttribute(attrs, '_tracking_fbc'),
+    fbclid: getNoteAttribute(attrs, '_tracking_fbclid'),
+    utm_source: getNoteAttribute(attrs, '_tracking_utm_source'),
+    utm_campaign: getNoteAttribute(attrs, '_tracking_utm_campaign'),
+    utm_medium: getNoteAttribute(attrs, '_tracking_utm_medium'),
+    utm_term: getNoteAttribute(attrs, '_tracking_utm_term'),
+    utm_content: getNoteAttribute(attrs, '_tracking_utm_content'),
+    landing_url: getNoteAttribute(attrs, '_tracking_landing_url'),
+    referrer: getNoteAttribute(attrs, '_tracking_referrer')
+  };
+
+  // Remover valores vazios
+  Object.keys(tracking).forEach(key => {
+    if (!tracking[key as keyof typeof tracking]) {
+      delete tracking[key as keyof typeof tracking];
+    }
+  });
+
+  if (Object.keys(tracking).length > 0) {
+    console.log('📊 [Tracking] Dados encontrados em note_attributes:', {
+      order_id: order.id,
+      ...tracking
+    });
+  } else {
+    console.warn('⚠️ [Tracking] Nenhum parâmetro de tracking encontrado para pedido:', order.id);
+  }
+
+  return tracking;
 }
 
 /**
@@ -686,7 +770,52 @@ export async function POST(request: Request) {
       duration_ms: duration
     });
 
-    // 9. Adicionar tag no Shopify para evitar reprocessamento
+    // 9. Disparar Facebook Purchase Event (CAPI)
+    try {
+      const trackingData = extractTrackingFromOrder(shopifyOrder);
+
+      await sendPurchaseEvent({
+        // User data
+        email: customerEmail,
+        phone: customerPhone,
+        first_name: firstName,
+        last_name: lastName,
+        city: billingParsed.city,
+        state: billingParsed.state,
+        country: billingParsed.country,
+        zip: billingParsed.postcode,
+
+        // Tracking
+        fbp: trackingData.fbp,
+        fbc: trackingData.fbc,
+        fbclid: trackingData.fbclid,
+        utm_source: trackingData.utm_source,
+        utm_campaign: trackingData.utm_campaign,
+        utm_medium: trackingData.utm_medium,
+        utm_term: trackingData.utm_term,
+        utm_content: trackingData.utm_content,
+
+        // Order
+        order_id: shopifyOrder.id.toString(),
+        value: parseFloat(shopifyOrder.total_price),
+        currency: shopifyOrder.currency,
+        content_ids: lineItems.map(item => item.product_id.toString()),
+        content_type: 'product',
+        num_items: lineItems.reduce((sum, item) => sum + item.quantity, 0),
+
+        // URLs
+        event_source_url: trackingData.landing_url || `https://dq3gzg-a6.myshopify.com/orders/${shopifyOrder.id}`,
+        referrer_url: trackingData.referrer
+      });
+
+      console.log('✅ [Facebook CAPI] Evento Purchase enviado com sucesso');
+    } catch (error: any) {
+      console.error('⚠️ [Facebook CAPI] Erro ao enviar evento:', error.message);
+      // NÃO bloquear a criação do pedido se CAPI falhar
+      // Apenas logar o erro e continuar
+    }
+
+    // 10. Adicionar tag no Shopify para evitar reprocessamento
     await addShopifyOrderTag(shopifyOrder.id, 'woocommerce-sync');
 
     return NextResponse.json({
