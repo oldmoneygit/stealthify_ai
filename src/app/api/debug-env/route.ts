@@ -1,43 +1,29 @@
-import { NextResponse } from 'next/server';
-
 /**
- * 🔍 DEBUG: Verificar variáveis de ambiente no Vercel
+ * 🔍 DEBUG: Verificar Environment Variables
  *
  * GET /api/debug-env
  *
- * IMPORTANTE: Este endpoint deve ser REMOVIDO em produção!
+ * IMPORTANTE: DELETAR depois de verificar!
  */
+
+import { NextResponse } from 'next/server';
+
 export async function GET() {
-  const envVars = {
-    // WooCommerce
-    WOOCOMMERCE_URL: process.env.WOOCOMMERCE_URL ? '✅ Configurado' : '❌ NÃO configurado',
-    WOOCOMMERCE_CONSUMER_KEY: process.env.WOOCOMMERCE_CONSUMER_KEY
-      ? `✅ ${process.env.WOOCOMMERCE_CONSUMER_KEY.substring(0, 10)}...`
-      : '❌ NÃO configurado',
-    WOOCOMMERCE_CONSUMER_SECRET: process.env.WOOCOMMERCE_CONSUMER_SECRET
-      ? `✅ ${process.env.WOOCOMMERCE_CONSUMER_SECRET.substring(0, 10)}...`
-      : '❌ NÃO configurado',
-
-    // Shopify
-    SHOPIFY_STORE_URL: process.env.SHOPIFY_STORE_URL ? '✅ Configurado' : '❌ NÃO configurado',
-    SHOPIFY_ACCESS_TOKEN: process.env.SHOPIFY_ACCESS_TOKEN
-      ? `✅ ${process.env.SHOPIFY_ACCESS_TOKEN.substring(0, 10)}...`
-      : '❌ NÃO configurado',
-    SHOPIFY_WEBHOOK_SECRET: process.env.SHOPIFY_WEBHOOK_SECRET
-      ? `✅ ${process.env.SHOPIFY_WEBHOOK_SECRET.substring(0, 10)}...`
-      : '❌ NÃO configurado',
-
-    // Supabase
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Configurado' : '❌ NÃO configurado',
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY
-      ? `✅ ${process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 10)}...`
-      : '❌ NÃO configurado',
-  };
+  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
 
   return NextResponse.json({
-    message: '🔍 Variáveis de Ambiente no Vercel',
-    env: envVars,
+    shopify_webhook_secret_exists: !!secret,
+    shopify_webhook_secret_length: secret?.length || 0,
+    shopify_webhook_secret_first_10: secret?.substring(0, 10) || 'N/A',
+    shopify_webhook_secret_last_10: secret?.substring(secret.length - 10) || 'N/A',
+
+    // Verificar outras env vars importantes
+    shopify_store_url_exists: !!process.env.SHOPIFY_STORE_URL,
+    shopify_access_token_exists: !!process.env.SHOPIFY_ACCESS_TOKEN,
+    woocommerce_url_exists: !!process.env.WOOCOMMERCE_URL,
+
+    // Runtime info
     node_env: process.env.NODE_ENV,
-    vercel: process.env.VERCEL ? 'Rodando no Vercel' : 'Não é Vercel'
+    vercel_env: process.env.VERCEL_ENV
   });
 }
