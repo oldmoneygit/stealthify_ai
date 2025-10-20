@@ -19,29 +19,6 @@ const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL!;
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
 const SHOPIFY_API_VERSION = '2024-01';
 
-interface ShopifyCustomer {
-  id: number;
-  email: string;
-  first_name: string;
-  last_name: string;
-  phone: string | null;
-  default_address: {
-    address1: string;
-    address2: string | null;
-    city: string;
-    province: string;
-    province_code: string;
-    zip: string;
-    country: string;
-    country_code: string;
-    phone: string | null;
-  } | null;
-}
-
-interface ShopifyCustomerResponse {
-  customer: ShopifyCustomer;
-}
-
 interface ShopifyOrderResponse {
   orders: ShopifyOrder[];
 }
@@ -103,44 +80,6 @@ async function fetchShopifyOrders(limit = 250): Promise<ShopifyOrder[]> {
   return data.orders || [];
 }
 
-/**
- * Busca dados completos do cliente na Shopify
- *
- * ✅ DADOS REAIS DO CLIENTE ao invés de fallbacks genéricos
- */
-async function fetchShopifyCustomer(customerId: number): Promise<ShopifyCustomer | null> {
-  try {
-    console.log(`👤 Buscando cliente Shopify ID: ${customerId}`);
-
-    // ✅ Adicionar fields parameter para garantir que TODOS os campos sejam retornados
-    const url = `${SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/customers/${customerId}.json?fields=id,email,first_name,last_name,phone,default_address`;
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      console.warn(`⚠️ Cliente ${customerId} não encontrado: ${response.status}`);
-      return null;
-    }
-
-    const data: ShopifyCustomerResponse = await response.json();
-
-    // Log detalhado para debug
-    console.log(`📊 Customer raw data:`, JSON.stringify(data.customer, null, 2));
-    console.log(`✅ Cliente: ${data.customer.first_name || 'N/A'} ${data.customer.last_name || 'N/A'} (${data.customer.email || 'N/A'})`);
-
-    return data.customer;
-
-  } catch (error) {
-    console.error(`❌ Erro ao buscar cliente ${customerId}:`, error);
-    return null;
-  }
-}
 
 /**
  * Adiciona tag no pedido Shopify
@@ -249,21 +188,11 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
       }
 
       // Calcular total COM desconto aplicado
-      console.log(`\n   🔍 DEBUG Item: ${item.title}`);
-      console.log(`      item.price (raw): "${item.price}" (type: ${typeof item.price})`);
-      console.log(`      item.quantity (raw): "${item.quantity}" (type: ${typeof item.quantity})`);
-      console.log(`      item.total_discount (raw): "${item.total_discount}" (type: ${typeof item.total_discount})`);
-
       const itemSubtotal = parseFloat(item.price) * item.quantity;
       const itemDiscount = parseFloat(item.total_discount || '0');
       const itemTotal = itemSubtotal - itemDiscount;
 
-      console.log(`      → Subtotal calculado: ${itemSubtotal}`);
-      console.log(`      → Discount calculado: ${itemDiscount}`);
-      console.log(`      → Total calculado: ${itemTotal}`);
-      console.log(`      → Enviando ao WooCommerce:`);
-      console.log(`         subtotal: "${itemSubtotal.toFixed(2)}"`);
-      console.log(`         total: "${itemTotal.toFixed(2)}"`);
+      console.log(`   💰 Item: ${item.title} - Subtotal: ${itemSubtotal}, Desconto: ${itemDiscount}, Total: ${itemTotal}`);
 
       lineItems.push({
         product_id: mapping.woo_product_id,
@@ -278,85 +207,63 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
       return { success: false, error: 'No mapped products' };
     }
 
-    // 3. 🎯 BUSCAR DADOS DO CLIENTE
-    // PRIORIDADE (do melhor pro pior):
-    // 1º note_attributes (dados BR estruturados)
-    // 2º order.billing_address/email (dados do pedido)
-    // 3º customerData Shopify (pode estar vazio!)
-    // 4º fallbacks genéricos
+    // 3. 🎯 DADOS DO CLIENTE
+    // ✅ MESMA LÓGICA DO WEBHOOK (que funciona!)
+    // Prioridade: order.customer → order.billing_address → fallback
 
-    let customerData: ShopifyCustomer | null = null;
+    console.log(`👤 Extraindo dados do cliente do pedido #${order.order_number}...`);
 
-    if (order.customer?.id) {
-      console.log(`👤 Pedido tem customer_id: ${order.customer.id}, buscando dados completos...`);
-      customerData = await fetchShopifyCustomer(order.customer.id);
+    // Nome do cliente (priorizar customer, depois billing_address)
+    const firstName = order.customer?.first_name ||
+                     order.billing_address?.first_name ||
+                     'Cliente';
+    const lastName = order.customer?.last_name ||
+                    order.billing_address?.last_name ||
+                    'Shopify';
 
-      // Verificar se customer tem dados reais
-      if (!customerData?.email && !customerData?.first_name) {
-        console.warn(`⚠️ Customer ${order.customer.id} existe mas está VAZIO, usando dados do pedido`);
-      }
-    } else {
-      console.warn(`⚠️ Pedido #${order.order_number} não tem customer_id`);
-    }
+    // Email: tentar pegar do pedido, customer ou billing
+    const email = order.email ||
+                 order.customer?.email ||
+                 order.billing_address?.email ||
+                 `pedido-${order.order_number}@shopify.snkhouse.com`;
 
-    // ✅ PRIORIDADE QUE FUNCIONAVA (customerData primeiro!)
-    const firstName = customerData?.first_name ||
-                      getNoteAttribute(order.note_attributes, 'billing_first_name') ||
-                      order.customer?.first_name ||
-                      order.billing_address?.first_name ||
-                      'Cliente';
+    // Telefone (pode estar em billing_address ou shipping_address)
+    const phone = order.billing_address?.phone ||
+                 order.shipping_address?.phone ||
+                 '';
 
-    const lastName = customerData?.last_name ||
-                     getNoteAttribute(order.note_attributes, 'billing_last_name') ||
-                     order.customer?.last_name ||
-                     order.billing_address?.last_name ||
-                     'Shopify';
+    console.log(`   ✅ Cliente: ${firstName} ${lastName}`);
+    console.log(`   ✅ Email: ${email}`);
 
-    const email = customerData?.email ||
-                  order.customer?.email ||
-                  order.email ||
-                  getNoteAttribute(order.note_attributes, 'billing_email') ||
-                  `pedido-${order.order_number}@shopify.snkhouse.com`;
-
-    const phone = customerData?.phone ||
-                  customerData?.default_address?.phone ||
-                  getNoteAttribute(order.note_attributes, 'billing_phone') ||
-                  order.billing_address?.phone ||
-                  order.shipping_address?.phone ||
-                  '0000000000';
-
-    // 4. Construir endereços (priorizar customer.default_address)
+    // 4. Construir endereços a partir de note_attributes (dados brasileiros)
     const streetName = getNoteAttribute(order.note_attributes, 'billing_street_name');
     const streetNumber = getNoteAttribute(order.note_attributes, 'billing_street_number');
+    const streetComplement = getNoteAttribute(order.note_attributes, 'billing_street_complement');
+    const neighborhood = getNoteAttribute(order.note_attributes, 'billing_neighborhood');
+    const city = getNoteAttribute(order.note_attributes, 'billing_city');
+    const state = getNoteAttribute(order.note_attributes, 'billing_state');
+    const postcode = getNoteAttribute(order.note_attributes, 'billing_postcode');
 
-    // ✅ PRIORIDADE QUE FUNCIONAVA (customerData primeiro!)
+    // Construir address_1 e address_2
+    const address_1 = (streetName && streetNumber)
+      ? `${streetName}, ${streetNumber}`
+      : (order.billing_address?.address1 || 'Endereço não informado');
+
+    const address_2 = streetComplement ||
+                     (neighborhood && neighborhood !== 'Bairro Não Informado' ? neighborhood : '') ||
+                     order.billing_address?.address2 ||
+                     '';
+
     const billingAddress = {
       first_name: firstName,
       last_name: lastName,
       company: '',
-      address_1: customerData?.default_address?.address1 ||
-                 (streetName && streetNumber ? `${streetName}, ${streetNumber}` : null) ||
-                 order.billing_address?.address1 ||
-                 'Endereço não informado',
-      address_2: customerData?.default_address?.address2 ||
-                 getNoteAttribute(order.note_attributes, 'billing_street_complement') ||
-                 order.billing_address?.address2 ||
-                 '',
-      city: customerData?.default_address?.city ||
-            getNoteAttribute(order.note_attributes, 'billing_city') ||
-            order.billing_address?.city ||
-            'Cidade não informada',
-      state: customerData?.default_address?.province_code ||
-             getNoteAttribute(order.note_attributes, 'billing_state') ||
-             order.billing_address?.province_code ||
-             'SP',
-      postcode: customerData?.default_address?.zip ||
-                getNoteAttribute(order.note_attributes, 'billing_postcode') ||
-                order.billing_address?.zip ||
-                '00000-000',
-      country: customerData?.default_address?.country_code ||
-               order.billing_address?.country_code ||
-               'BR',
+      address_1,
+      address_2,
+      city: city || order.billing_address?.city || 'Cidade não informada',
+      state: state || order.billing_address?.province_code || 'SP',
+      postcode: postcode || order.billing_address?.zip || '00000-000',
+      country: order.billing_address?.country_code || 'BR',
       email: email,
       phone: phone
     };
