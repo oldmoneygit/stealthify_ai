@@ -82,6 +82,83 @@ async function fetchShopifyOrders(limit = 250): Promise<ShopifyOrder[]> {
 
 
 /**
+ * Busca nome e telefone REAIS do cliente nos EVENTS do pedido
+ * (onde está registrado quem fez o pedido e recebeu SMS)
+ */
+async function fetchCustomerDataFromEvents(orderId: number): Promise<{
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+} | null> {
+  try {
+    const url = `${SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/orders/${orderId}/events.json`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn(`⚠️ Não foi possível buscar events do pedido ${orderId}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const events = data.events || [];
+
+    let fullName: string | null = null;
+    let phone: string | null = null;
+
+    // Procurar nome e telefone nos events
+    for (const event of events) {
+      const message = event.message || '';
+
+      // Padrão 1: "SMS was sent to [NOME] ([TELEFONE])"
+      const smsMatch = message.match(/SMS was sent to (.+?) \(([+\d\s\-]+)\)/i);
+      if (smsMatch) {
+        fullName = smsMatch[1].trim();
+        phone = smsMatch[2].trim();
+        console.log(`   📱 SMS enviado para: "${fullName}" (${phone})`);
+        break;
+      }
+
+      // Padrão 2: "[NOME] placed this order"
+      const placedMatch = message.match(/^(.+?) placed this order/i);
+      if (placedMatch) {
+        fullName = placedMatch[1].trim();
+        console.log(`   📦 Pedido feito por: "${fullName}"`);
+        // Continuar procurando por SMS para pegar telefone
+      }
+    }
+
+    if (!fullName) {
+      console.warn(`   ⚠️ Nome do cliente não encontrado nos events`);
+      return null;
+    }
+
+    // Parsear nome completo em first_name e last_name
+    const nameParts = fullName.split(' ');
+    const firstName = nameParts[0] || 'Cliente';
+    const lastName = nameParts.slice(1).join(' ') || 'Shopify';
+
+    console.log(`   ✅ Nome extraído dos events: "${fullName}" → ${firstName} ${lastName}`);
+
+    return {
+      first_name: firstName,
+      last_name: lastName,
+      phone: phone
+    };
+
+  } catch (error) {
+    console.error(`❌ Erro ao buscar events:`, error);
+    return null;
+  }
+}
+
+/**
  * Adiciona tag no pedido Shopify
  */
 async function addShopifyOrderTag(orderId: number, tag: string): Promise<void> {
@@ -208,16 +285,24 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
     }
 
     // 3. 🎯 DADOS DO CLIENTE
-    // ✅ MESMA LÓGICA DO WEBHOOK (que funciona!)
-    // Prioridade: order.customer → order.billing_address → fallback
+    // ✅ PRIORIDADE ATUALIZADA:
+    // 1º Events (quem fez o pedido e recebeu SMS) - NOME e TELEFONE REAIS
+    // 2º order.customer
+    // 3º order.billing_address
+    // 4º fallback
 
     console.log(`👤 Extraindo dados do cliente do pedido #${order.order_number}...`);
 
-    // Nome do cliente (priorizar customer, depois billing_address)
-    const firstName = order.customer?.first_name ||
+    // ✅ BUSCAR NOME e TELEFONE NOS EVENTS (mensagens do sistema)
+    const eventsData = await fetchCustomerDataFromEvents(order.id);
+
+    // Nome do cliente (PRIORIZAR events!)
+    const firstName = eventsData?.first_name ||
+                     order.customer?.first_name ||
                      order.billing_address?.first_name ||
                      'Cliente';
-    const lastName = order.customer?.last_name ||
+    const lastName = eventsData?.last_name ||
+                    order.customer?.last_name ||
                     order.billing_address?.last_name ||
                     'Shopify';
 
@@ -227,13 +312,15 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<{
                  order.billing_address?.email ||
                  `pedido-${order.order_number}@shopify.snkhouse.com`;
 
-    // Telefone (pode estar em billing_address ou shipping_address)
-    const phone = order.billing_address?.phone ||
+    // Telefone (PRIORIZAR events, depois billing/shipping)
+    const phone = eventsData?.phone ||
+                 order.billing_address?.phone ||
                  order.shipping_address?.phone ||
                  '';
 
     console.log(`   ✅ Cliente: ${firstName} ${lastName}`);
     console.log(`   ✅ Email: ${email}`);
+    console.log(`   ✅ Telefone: ${phone || '(não informado)'}`);
 
     // 4. Construir endereços a partir de note_attributes (dados brasileiros)
     const streetName = getNoteAttribute(order.note_attributes, 'billing_street_name');
