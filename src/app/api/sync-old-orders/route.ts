@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createWooCommerceOrder } from '@/services/woocommerce.service';
 import { getProductByShopifyVariantId } from '@/lib/supabase';
 import { sendPurchaseEvent } from '@/services/facebook-capi.service';
-import { getTrackingByOrderId } from '@/app/api/save-tracking/route';
+import { getTrackingByOrderId } from '@/services/tracking-cache.service';
 
 /**
  * 🔄 API ROUTE: Sync Old Shopify Orders → WooCommerce

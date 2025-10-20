@@ -311,10 +311,4 @@ function buildFbc(fbclid: string): string {
   return `fb.1.${timestamp}.${fbclid}`;
 }
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export default {
-  sendPurchaseEvent
-};
+// All exports are already named exports above (sendPurchaseEvent, etc.)

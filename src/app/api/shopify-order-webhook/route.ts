@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { getProductByShopifyVariantId } from '@/lib/supabase';
 import { createWooCommerceOrder, checkIfOrderExists, updateOrderStatus } from '@/services/woocommerce.service';
 import { sendPurchaseEvent } from '@/services/facebook-capi.service';
-import { getTrackingByOrderId } from '@/app/api/save-tracking/route';
+import { getTrackingByOrderId } from '@/services/tracking-cache.service';
 
 /**
  * 🔄 API ROUTE: Shopify Order Webhook → WooCommerce Order Sync

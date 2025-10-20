@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { saveTracking, getTrackingByOrderId, getCacheStats } from '@/services/tracking-cache.service';
 
 /**
  * 🎯 API ROUTE: Save Tracking Parameters
@@ -67,74 +68,6 @@ interface TrackingData {
   };
 }
 
-interface StoredTracking {
-  // Facebook
-  fbclid?: string;
-  fbp?: string;
-  fbc?: string;
-
-  // UTMs
-  utm_source?: string;
-  utm_medium?: string;
-  utm_campaign?: string;
-  utm_term?: string;
-  utm_content?: string;
-  utm_id?: string;
-
-  // Google
-  gclid?: string;
-
-  // TikTok
-  ttclid?: string;
-
-  // Microsoft
-  msclkid?: string;
-
-  // URLs
-  landing_url?: string;
-  referrer?: string;
-
-  // Client info
-  user_agent?: string;
-  client_ip?: string;
-
-  // Timestamps
-  saved_at: string;
-  expires_at: string;
-}
-
-// ============================================================================
-// IN-MEMORY CACHE
-// ============================================================================
-
-/**
- * Cache em memória para armazenar tracking temporariamente
- *
- * ⚠️ IMPORTANTE: Dados ficam salvos por 24h
- * Depois são automaticamente deletados para não ocupar memória
- *
- * 💡 MELHORIA FUTURA: Usar Redis ou Supabase para persistência
- */
-const trackingCache = new Map<string, StoredTracking>();
-
-// Limpar cache a cada hora (remover entradas expiradas)
-setInterval(() => {
-  const now = Date.now();
-  let removed = 0;
-
-  trackingCache.forEach((value, key) => {
-    const expiresAt = new Date(value.expires_at).getTime();
-    if (now > expiresAt) {
-      trackingCache.delete(key);
-      removed++;
-    }
-  });
-
-  if (removed > 0) {
-    console.log(`🧹 [Tracking Cache] Removidas ${removed} entradas expiradas`);
-  }
-}, 60 * 60 * 1000); // 1 hora
-
 // ============================================================================
 // API HANDLERS
 // ============================================================================
@@ -171,31 +104,14 @@ export async function POST(request: Request) {
     // Normalizar order_id para string
     const orderId = data.order_id.toString();
 
-    // Salvar com timestamp e expiração (24h)
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 horas
-
-    const storedData: StoredTracking = {
-      ...data.tracking,
-      saved_at: now.toISOString(),
-      expires_at: expiresAt.toISOString()
-    };
-
-    trackingCache.set(orderId, storedData);
-
-    console.log('✅ [Tracking] Dados salvos para pedido:', {
-      order_id: orderId,
-      has_fbclid: !!data.tracking.fbclid,
-      has_fbp: !!data.tracking.fbp,
-      has_utm: !!data.tracking.utm_source,
-      cache_size: trackingCache.size
-    });
+    // Salvar usando o service
+    const storedData = saveTracking(orderId, data.tracking);
 
     return NextResponse.json({
       success: true,
       order_id: orderId,
-      saved_at: now.toISOString(),
-      expires_at: expiresAt.toISOString()
+      saved_at: storedData.saved_at,
+      expires_at: storedData.expires_at
     }, { headers: corsHeaders });
 
   } catch (error: any) {
@@ -226,24 +142,12 @@ export async function GET(request: Request) {
       }, { status: 400, headers: corsHeaders });
     }
 
-    const tracking = trackingCache.get(orderId);
+    const tracking = getTrackingByOrderId(orderId);
 
     if (!tracking) {
       return NextResponse.json({
         success: false,
         error: 'Tracking não encontrado (pode ter expirado)'
-      }, { status: 404, headers: corsHeaders });
-    }
-
-    // Verificar se não expirou
-    const now = new Date();
-    const expiresAt = new Date(tracking.expires_at);
-
-    if (now > expiresAt) {
-      trackingCache.delete(orderId);
-      return NextResponse.json({
-        success: false,
-        error: 'Tracking expirado'
       }, { status: 404, headers: corsHeaders });
     }
 
@@ -261,50 +165,4 @@ export async function GET(request: Request) {
       error: error.message
     }, { status: 500, headers: corsHeaders });
   }
-}
-
-// ============================================================================
-// HELPER FUNCTIONS (para uso interno)
-// ============================================================================
-
-/**
- * Busca tracking por order_id (para uso em outros services)
- *
- * @param orderId - ID do pedido Shopify
- * @returns Dados de tracking ou null se não encontrado
- */
-export function getTrackingByOrderId(orderId: string): StoredTracking | null {
-  const tracking = trackingCache.get(orderId);
-
-  if (!tracking) {
-    return null;
-  }
-
-  // Verificar se não expirou
-  const now = new Date();
-  const expiresAt = new Date(tracking.expires_at);
-
-  if (now > expiresAt) {
-    trackingCache.delete(orderId);
-    return null;
-  }
-
-  return tracking;
-}
-
-/**
- * Retorna estatísticas do cache (para debugging)
- */
-export function getCacheStats() {
-  return {
-    total_entries: trackingCache.size,
-    entries: Array.from(trackingCache.entries()).map(([orderId, data]) => ({
-      order_id: orderId,
-      saved_at: data.saved_at,
-      expires_at: data.expires_at,
-      has_fbclid: !!data.fbclid,
-      has_fbp: !!data.fbp,
-      utm_source: data.utm_source
-    }))
-  };
 }
