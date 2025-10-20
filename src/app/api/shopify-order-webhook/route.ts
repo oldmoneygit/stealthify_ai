@@ -137,7 +137,11 @@ function verifyWebhookSignature(
     console.error('   Expected (Shopify):', hmacHeader);
     console.error('   Calculated (Server):', hash);
     console.error('   Secret length:', secret.length);
+    console.error('   Secret first 10:', secret.substring(0, 10));
+    console.error('   Secret last 10:', secret.substring(secret.length - 10));
     console.error('   Body length:', body.length);
+    console.error('   Body first 100:', body.substring(0, 100));
+    console.error('   Body last 100:', body.substring(body.length - 100));
   } else {
     console.log('✅ [Webhook] HMAC verification successful');
   }
